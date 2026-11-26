@@ -11,8 +11,29 @@
 	/* ---------- storage ---------- */
 	const load = () => { try { T.list = JSON.parse(localStorage.getItem(LS_KEY) || '[]'); } catch (e) { T.list = []; } };
 	const persist = () => { try { localStorage.setItem(LS_KEY, JSON.stringify(T.list)); } catch (e) { /* storage unavailable */ } };
-	const blankGrid = () => [0, 1, 2, 3, 4].map(() => [null, null, null, null, null]);
-	const newTemplate = (name) => ({ id: FB.uid(), name: name || 'New template', notes: '', grid: blankGrid(), support: [null, null, null, null, null], created: new Date().toISOString(), updated: new Date().toISOString() });
+	/* Size of the division designer: from NDefines.NMilitary in the game and the mod (common/defines/*.lua). */
+	T.size = { cols: 5, rows: 5, support: 5, source: 'game default' };
+	const SZ = () => T.size;
+	const blankGrid = () => Array.from({ length: SZ().rows }, () => Array(SZ().cols).fill(null));
+	const blankSupport = () => Array(SZ().support).fill(null);
+	const newTemplate = (name) => ({ id: FB.uid(), name: name || 'New template', notes: '', grid: blankGrid(), support: blankSupport(), created: new Date().toISOString(), updated: new Date().toISOString() });
+	/** Makes room for the current size; cells outside it are kept but not shown or counted. */
+	function fit(t) {
+		while (t.grid.length < SZ().rows) t.grid.push([]);
+		t.grid.forEach((row) => { while (row.length < SZ().cols) row.push(null); });
+		while (t.support.length < SZ().support) t.support.push(null);
+		return t;
+	}
+	const DEF_KEYS = { W: 'MAX_DIVISION_BRIGADE_WIDTH', H: 'MAX_DIVISION_BRIGADE_HEIGHT', SW: 'MAX_DIVISION_SUPPORT_WIDTH', SH: 'MAX_DIVISION_SUPPORT_HEIGHT' };
+	function readDefines(text, into) {
+		const clean = text.replace(/--[^\n]*/g, '');
+		Object.entries(DEF_KEYS).forEach(([id, key]) => {
+			const re = new RegExp('\\b' + key + '\\s*=\\s*(\\d+)', 'g');
+			let m, last = null;
+			while ((m = re.exec(clean))) last = Number(m[1]);
+			if (last != null) into[id] = last;
+		});
+	}
 	const current = () => T.list.find((t) => t.id === T.cur) || null;
 	const touch = (t) => { t.updated = new Date().toISOString(); persist(); };
 	const pretty = (k) => { const s = String(k).replace(/_/g, ' ').trim(); return s.charAt(0).toUpperCase() + s.slice(1); };
@@ -69,7 +90,8 @@
 		if (FB.ws.active) sources.push({ label: 'mod', dir: FB.ws.dir, game: false });
 		if (!sources.length) { useFallback(); T.units.ready = false; T.sig = sig(); return; }
 		T.loading = true; T.status = 'Reading units…'; render();
-		const found = new Map(), loc = {};
+		const found = new Map(), loc = {}, defs = {};
+		let defSrc = '';
 		try {
 			for (const s of sources) {
 				try {
@@ -87,6 +109,13 @@
 						});
 					}
 				} catch (e) { /* no units folder in this source */ }
+				try {
+					const dd = await (await s.dir.getDirectoryHandle('common')).getDirectoryHandle('defines');
+					const df = [];
+					await FB.fsutil.walk(dd, '', df, 0, (n, base) => /\.lua$/i.test(n) && base === '');
+					df.sort((a, b) => a.path.localeCompare(b.path));
+					for (const f of df) { const before = JSON.stringify(defs); readDefines(await FB.fsutil.readText(f.handle), defs); if (JSON.stringify(defs) !== before) defSrc = s.label; }
+				} catch (e) { /* no defines in this source */ }
 				if (s.game) {
 					try {
 						const ld = await (await (await s.dir.getDirectoryHandle('localisation')).getDirectoryHandle('english'));
@@ -98,6 +127,8 @@
 			}
 		} finally { T.loading = false; T.status = ''; }
 		if (FB.ws.active) Object.assign(loc, FB.ws.loc);
+		const clampN = (n, d) => (Number.isFinite(n) && n > 0 && n <= 20 ? n : d);
+		T.size = { cols: clampN(defs.W, 5), rows: clampN(defs.H, 5), support: clampN((defs.SW || 1) * (defs.SH || 5), 5), source: defSrc === 'mod' ? (FB.ws.name || 'the mod') : 'the base game' };
 		const U = T.units;
 		U.battalions = []; U.support = []; U.byKey = {};
 		found.forEach((u) => {
@@ -166,8 +197,9 @@
 	function summary(t) {
 		const count = {};
 		let bat = 0, sup = 0;
-		t.grid.forEach((row) => row.forEach((k) => { if (k) { bat++; count[k] = (count[k] || 0) + 1; } }));
-		t.support.forEach((k) => { if (k) sup++; });
+		fit(t);
+		t.grid.slice(0, SZ().rows).forEach((row) => row.slice(0, SZ().cols).forEach((k) => { if (k) { bat++; count[k] = (count[k] || 0) + 1; } }));
+		t.support.slice(0, SZ().support).forEach((k) => { if (k) sup++; });
 		const parts = Object.entries(count).sort((a, b) => b[1] - a[1]).map(([k, n]) => n + '× ' + unitOf(k).name);
 		return { bat, sup, text: parts.join(', ') || 'Empty template' };
 	}
@@ -176,7 +208,7 @@
 	function snapshot(t) {
 		const cell = (k) => { const u = unitOf(k); return u ? { name: u.name, abbr: u.abbr, group: u.group, key: u.key } : null; };
 		const s = summary(t);
-		return { id: t.id, name: t.name, notes: t.notes || '', rows: t.grid.map((row) => row.map(cell)), support: t.support.map(cell), summary: s.text, battalions: s.bat, supportCount: s.sup };
+		return { id: t.id, name: t.name, notes: t.notes || '', rows: fit(t).grid.slice(0, SZ().rows).map((row) => row.slice(0, SZ().cols).map(cell)), support: t.support.slice(0, SZ().support).map(cell), summary: s.text, battalions: s.bat, supportCount: s.sup };
 	}
 
 	/* ---------- presets ---------- */
@@ -189,9 +221,9 @@
 	function applyPreset(t, idx) {
 		const p = PRESETS[idx];
 		t.grid = blankGrid();
-		p[1].forEach((col, c) => col.forEach((k, r) => { t.grid[r][c] = k; }));
-		t.support = [null, null, null, null, null];
-		p[2].forEach((k, i) => { t.support[i] = k; });
+		p[1].forEach((col, c) => col.forEach((k, r) => { if (r < SZ().rows && c < SZ().cols) t.grid[r][c] = k; }));
+		t.support = blankSupport();
+		p[2].forEach((k, i) => { if (i < SZ().support) t.support[i] = k; });
 		touch(t);
 	}
 
@@ -238,11 +270,11 @@
 	function editor() {
 		const t = current();
 		const sec = h('section', { class: 'tp-edit' });
-		if (!t) { sec.appendChild(h('div', { class: 'dz-empty' }, h('h3', {}, 'Division templates'), h('p', {}, 'Build the layout of a division: up to 25 battalions and 5 support companies. Templates are saved here and can be added to a country guide.'))); return sec; }
+		if (!t) { sec.appendChild(h('div', { class: 'dz-empty' }, h('h3', {}, 'Division templates'), h('p', {}, 'Build the layout of a division: up to ' + (SZ().rows * SZ().cols) + ' battalions and ' + SZ().support + ' support companies (from ' + SZ().source + '). Templates are saved here and can be added to a country guide.'))); return sec; }
 		sec.appendChild(h('div', { class: 'tp-head' },
 			h('input', { type: 'text', class: 'dzf-name', value: t.name, placeholder: 'Template name', oninput: (e) => { t.name = e.target.value; touch(t); const it = document.querySelector('.tp-item.on b'); if (it) it.textContent = t.name || '(unnamed)'; } }),
 			h('select', { class: 'dzf-pick', onchange: (e) => { if (e.target.value !== '') { applyPreset(t, Number(e.target.value)); render(); } } }, h('option', { value: '' }, 'Start from a preset…'), PRESETS.map((p, i) => h('option', { value: i }, p[0]))),
-			h('button', { class: 'dzf-btn', onclick: () => { t.grid = blankGrid(); t.support = [null, null, null, null, null]; touch(t); render(); } }, FB.icon('undo', 14), 'Clear'),
+			h('button', { class: 'dzf-btn', onclick: () => { t.grid = blankGrid(); t.support = blankSupport(); touch(t); render(); } }, FB.icon('undo', 14), 'Clear'),
 			h('button', { class: 'dzf-btn', onclick: () => { const c = JSON.parse(JSON.stringify(t)); c.id = FB.uid(); c.name = t.name + ' (copy)'; T.list.push(c); T.cur = c.id; persist(); render(); } }, FB.icon('copy', 14), 'Duplicate'),
 			h('button', { class: 'dzf-btn', onclick: () => { if (confirm('Delete the template "' + t.name + '"?')) { T.list = T.list.filter((x) => x.id !== t.id); T.cur = null; persist(); render(); } } }, FB.icon('trash', 14), 'Delete')));
 
@@ -253,18 +285,20 @@
 				oncontextmenu: (e) => { e.preventDefault(); set(null); touch(t); render(); } }, tile(u, 52), h('span', { class: 'tp-cap' }, u ? u.name : ''));
 		};
 		const fillBtn = (title, onFill) => h('button', { class: 'ibtn tp-fill', title, onclick: (e) => pickUnit(e.currentTarget, 'battalion', (k) => { onFill(k); touch(t); render(); }) }, FB.icon('plus', 14));
-		const grid = h('div', { class: 'tp-grid' });
+		fit(t);
+		const R = SZ().rows, C = SZ().cols;
+		const grid = h('div', { class: 'tp-grid', style: { gridTemplateColumns: '74px repeat(' + C + ', minmax(0, 1fr))' } });
 		grid.appendChild(h('span'));
-		for (let c = 0; c < 5; c++) grid.appendChild(h('div', { class: 'tp-colh' }, 'Column ' + (c + 1), fillBtn('Fill this column', (k) => { for (let r = 0; r < 5; r++) t.grid[r][c] = k; })));
-		for (let r = 0; r < 5; r++) {
-			grid.appendChild(h('div', { class: 'tp-rowh' }, 'Row ' + (r + 1), fillBtn('Fill this row', (k) => { for (let c = 0; c < 5; c++) t.grid[r][c] = k; })));
-			for (let c = 0; c < 5; c++) grid.appendChild(cell('battalion', () => t.grid[r][c], (k) => { t.grid[r][c] = k; }));
+		for (let c = 0; c < C; c++) grid.appendChild(h('div', { class: 'tp-colh' }, 'Column ' + (c + 1), fillBtn('Fill this column', (k) => { for (let r = 0; r < R; r++) t.grid[r][c] = k; })));
+		for (let r = 0; r < R; r++) {
+			grid.appendChild(h('div', { class: 'tp-rowh' }, 'Row ' + (r + 1), fillBtn('Fill this row', (k) => { for (let c = 0; c < C; c++) t.grid[r][c] = k; })));
+			for (let c = 0; c < C; c++) grid.appendChild(cell('battalion', () => t.grid[r][c], (k) => { t.grid[r][c] = k; }));
 		}
-		const sup = h('div', { class: 'tp-support' }, [0, 1, 2, 3, 4].map((i) => cell('support', () => t.support[i], (k) => { t.support[i] = k; })));
+		const sup = h('div', { class: 'tp-support', style: { gridTemplateColumns: 'repeat(' + Math.min(SZ().support, 6) + ', minmax(0, 1fr))' } }, Array.from({ length: SZ().support }, (x, i) => i).map((i) => cell('support', () => t.support[i], (k) => { t.support[i] = k; })));
 		const s = summary(t);
 		sec.append(
-			h('div', { class: 'tp-box' }, h('div', { class: 'dzf-phd' }, 'Combat battalions'), grid),
-			h('div', { class: 'tp-box' }, h('div', { class: 'dzf-phd' }, 'Support companies'), sup),
+			h('div', { class: 'tp-box' }, h('div', { class: 'dzf-phd' }, 'Combat battalions · ' + C + ' columns × ' + R + ' rows'), grid),
+			h('div', { class: 'tp-box' }, h('div', { class: 'dzf-phd' }, 'Support companies · ' + SZ().support + ' slots (from ' + SZ().source + ')'), sup),
 			h('div', { class: 'tp-summary' }, h('b', {}, s.bat + ' battalions · ' + s.sup + ' support companies'), h('span', {}, s.text)),
 			h('label', { class: 'fld' }, h('span', { class: 'fld-l' }, FB.icon('scroll', 13), 'Notes (how and when to use this template)'), h('textarea', { rows: 3, value: t.notes || '', placeholder: 'e.g. Standard line division for the early war. Swap artillery for anti-tank against heavy tanks.', oninput: (e) => { t.notes = e.target.value; touch(t); } })),
 			h('p', { class: 'muted small' }, 'Saved automatically in this browser. Left-click a cell to choose a unit, right-click to clear it. Stats are not shown here: this is only the layout.'));
