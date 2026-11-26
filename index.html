@@ -1,0 +1,111 @@
+﻿<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Elmo tool</title>
+<meta name="description" content="Build Hearts of Iron IV focus trees visually and export them for Claude.">
+<meta name="theme-color" content="#4a0a0e">
+<link rel="icon" type="image/png" sizes="512x512" href="assets/logo.png?v=3">
+<link rel="shortcut icon" href="assets/icon.ico?v=3">
+<link rel="apple-touch-icon" href="assets/logo.png?v=3">
+<link rel="manifest" href="assets/manifest.webmanifest?v=3">
+<link rel="stylesheet" href="css/app.css?v=19">
+<link rel="stylesheet" href="css/overhaul.css?v=19">
+<link rel="stylesheet" href="css/designer.css?v=19">
+<link rel="stylesheet" href="css/guides.css?v=19">
+<link rel="stylesheet" href="css/refine.css?v=19">
+</head>
+<body>
+<div id="app" data-view="tree">
+	<header id="topbar">
+		<div class="brand"><img class="logo-img" src="assets/logo.png?v=3" alt=""> Elmo tool</div>
+		<div class="tb-group">
+			<button id="btn-new" class="tb" title="New project">New</button>
+			<button id="btn-import" class="tb" title="Import an existing HOI4 focus tree">Import</button>
+			<button id="btn-open" class="tb" title="Open a saved project file">Open</button>
+			<button id="btn-save" class="tb" title="Save project to a file (Ctrl+S)">Save</button>
+		</div>
+		<div class="tb-group">
+			<button id="btn-undo" class="tb" title="Undo (Ctrl+Z)">&#8630; Undo</button>
+			<button id="btn-redo" class="tb" title="Redo (Ctrl+Y)">Redo &#8631;</button>
+		</div>
+		<div class="spacer"></div>
+		<div class="issues-wrap">
+			<button id="btn-issues" class="pill ok">All good</button>
+			<div id="issues-pop" class="pop" hidden></div>
+		</div>
+		<button id="btn-help" class="tb round" title="How it works">?</button>
+		<button id="btn-export" class="btn primary">Export for Claude</button>
+	</header>
+
+	<aside id="left">
+		<div id="ws-bar"></div>
+		<nav id="left-tabs" class="tabs">
+			<button data-tab="focuses" class="on">Focuses</button>
+			<button data-tab="project">Project</button>
+			<button data-tab="things">Things</button>
+			<button data-tab="changes" id="tab-changes">Changes</button>
+		</nav>
+		<div id="left-body">
+			<section id="pane-focuses" class="pane"></section>
+			<section id="pane-project" class="pane" hidden></section>
+			<section id="pane-things" class="pane" hidden></section>
+			<section id="pane-changes" class="pane" hidden></section>
+		</div>
+	</aside>
+
+	<main id="stage">
+		<div id="viewport" tabindex="0" aria-label="Focus tree canvas"></div>
+		<div id="canvas-tools">
+			<button id="tool-add" class="btn small primary" title="Add a focus (N)">+ Add focus</button>
+			<button id="tool-tidy" class="btn small" title="Arrange everything neatly in rows">Tidy up</button>
+			<span class="sep"></span>
+			<button id="zoom-out" class="ibtn" title="Zoom out">&minus;</button>
+			<span id="zoom-label">100%</span>
+			<button id="zoom-in" class="ibtn" title="Zoom in">+</button>
+			<button id="zoom-fit" class="btn small" title="Fit everything on screen">Fit</button>
+		</div>
+		<div id="legend"></div>
+	</main>
+
+	<aside id="right"><div id="inspector"></div></aside>
+
+	<nav id="mobile-nav">
+		<button data-view="tree" class="on">Tree</button>
+		<button data-view="list">Focuses</button>
+		<button data-view="details">Details</button>
+	</nav>
+</div>
+<div id="toasts"></div>
+<div id="modal-root"></div>
+
+<script src="js/util.js?v=19"></script>
+<script src="js/devmode.js?v=19"></script>
+<script src="js/icons.js?v=19"></script>
+<script src="js/server.js?v=19"></script>
+<script src="js/catalog.js?v=19"></script>
+<script src="js/model.js?v=19"></script>
+<script src="js/codegen.js?v=19"></script>
+<script src="js/diff.js?v=19"></script>
+<script src="js/widgets.js?v=19"></script>
+<script src="js/canvas.js?v=19"></script>
+<script src="js/sample.js?v=19"></script>
+<script src="js/importer.js?v=19"></script>
+<script src="js/workspace.js?v=19"></script>
+<script src="js/importui.js?v=19"></script>
+<script src="js/gamedata.js?v=19"></script>
+<script src="js/modui.js?v=19"></script>
+<script src="js/mio.js?v=19"></script>
+<script src="js/equipment.js?v=19"></script>
+<script src="js/gfx.js?v=19"></script>
+<script src="js/modes.js?v=19"></script>
+<script src="js/designer.js?v=19"></script>
+<script src="js/templates.js?v=19"></script>
+<script src="js/market-config.js?v=19"></script>
+<script src="js/market.js?v=19"></script>
+<script src="js/guides.js?v=19"></script>
+<script src="js/update.js?v=19"></script>
+<script src="js/app.js?v=19"></script>
+</body>
+</html>

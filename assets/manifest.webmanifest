@@ -1,0 +1,12 @@
+{
+	"name": "Elmo tool",
+	"short_name": "Elmo tool",
+	"description": "Build and edit HOI4 focus trees, MIOs and equipment designs",
+	"start_url": "../",
+	"display": "standalone",
+	"background_color": "#14171a",
+	"theme_color": "#4a0a0e",
+	"icons": [
+		{ "src": "logo.png?v=3", "sizes": "512x512", "type": "image/png", "purpose": "any" }
+	]
+}

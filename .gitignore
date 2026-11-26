@@ -1,0 +1,9 @@
+.claude/settings.local.json
+*.tmp
+node_modules/
+__pycache__/
+*.pyc
+Elmo tool.lnk
+.installed-version
+*.fbnew
+*.fbtmp
