@@ -365,6 +365,8 @@
 		pane.appendChild(bar);
 		pane.appendChild(h('p', { class: 'muted small' }, 'Designs come from the Designer tab. Save a design there with the save button, then add it here. The guide keeps its own copy, so changing the design later does not change the guide.'));
 		if (!arr.length) pane.appendChild(h('div', { class: 'tp-empty' }, 'No ' + kind + ' designs in this guide yet.'));
+		if (fillDesignIcons(arr)) save(g);
+		else if (missingDesignIcons(arr)) backfill(g, 'design');
 		arr.forEach((s, i) => {
 			const live = saved.find((d) => d.id === s.id);
 			const refresh = live ? h('button', { class: 'ibtn', title: 'Update from the Designer (pictures, stats and modules as they are now)', onclick: async () => {
@@ -380,6 +382,48 @@
 
 	/* ---------- tab: templates ---------- */
 	/** A design as in the Designer: blueprint, module tiles with the game's pictures, clicks and the main stats. */
+	/* Designs and templates added to a guide before the pictures existed (or while the game data was not loaded)
+	   get their pictures here, as soon as the game data and icons are available. */
+	let filling = false;
+	function fillDesignIcons(list) {
+		const d = FB.equip && FB.equip.data;
+		if (!d || !FB.gfx || !FB.gfx.ready) return false;
+		let changed = false;
+		list.forEach((sn) => (sn.modules || []).forEach((m) => {
+			if (m.icon || !m.name) return;
+			let mod = m.key && d.modules[m.key];
+			if (!mod) { const nm = m.name.replace(/^★ /, ''); mod = Object.values(d.modules).find((x) => !x.custom && d.name(x.key) === nm); }
+			if (!mod || mod.custom) return;
+			const ic = FB.gfx.find(FB.gfx.moduleNames(mod, d.modules));
+			if (ic) { m.icon = ic; m.key = mod.key; FB.gfx.keep(ic); changed = true; }
+		}));
+		return changed;
+	}
+	function fillUnitIcons(list) {
+		if (!FB.gfx || !FB.gfx.ready) return false;
+		let changed = false;
+		list.forEach((t) => (t.rows || []).flat().concat(t.support || []).forEach((c) => {
+			if (!c || c.icon || !c.key) return;
+			const ic = FB.gfx.find(['GFX_unit_' + c.key + '_icon_medium', 'GFX_unit_' + c.key.replace(/_brigade$/, '') + '_icon_medium']);
+			if (ic) { c.icon = ic; FB.gfx.keep(ic); changed = true; }
+		}));
+		return changed;
+	}
+	const missingDesignIcons = (list) => list.some((sn) => (sn.modules || []).some((m) => m.name && !m.icon && !/^★/.test(m.name)));
+	const missingUnitIcons = (list) => list.some((t) => (t.rows || []).flat().concat(t.support || []).some((c) => c && !c.icon));
+	/** Loads the game data and icons in the background (needs the helper), then fills in and redraws. */
+	function backfill(g, kind) {
+		if (filling || !FB.server.active) return;
+		filling = true;
+		const jobs = [FB.gfx ? FB.gfx.load() : Promise.resolve()];
+		if (kind === 'design' && FB.designer && !FB.designer.hasData()) jobs.push(FB.designer.ensure());
+		Promise.all(jobs).catch(() => null).then(() => {
+			filling = false;
+			const ch = kind === 'design' ? fillDesignIcons(g.tanks.concat(g.ships)) : fillUnitIcons(g.templates);
+			if (ch) { save(g); if (FB.modes.current === 'guides') render(); }
+		});
+	}
+
 	function designView(s) {
 		const mods = (s.modules || []).map((m) => h('div', { class: 'gd-mod' + (m.name ? '' : ' empty'), title: m.slot + ': ' + (m.name || 'empty') },
 			h('div', { class: 'gd-modpic' }, m.icon && FB.gfx ? FB.gfx.picture(m.icon) : null, h('span', { class: 'gd-modalt' }, m.name ? (m.tier || '•') : '')),
@@ -408,6 +452,8 @@
 			h('button', { class: 'dzf-btn gold', disabled: !all.length, onclick: () => { const t = FB.templates.byId(sel.value); if (!t) return; g.templates.push(FB.templates.snapshot(t)); save(g); render(); } }, FB.icon('plus', 14), 'Add template to guide'),
 			h('button', { class: 'dzf-btn', onclick: () => FB.modes.set('templates') }, FB.icon('users', 14), 'Open Templates')));
 		if (!g.templates.length) pane.appendChild(h('div', { class: 'tp-empty' }, 'No division templates in this guide yet.'));
+		if (fillUnitIcons(g.templates)) save(g);
+		else if (missingUnitIcons(g.templates)) backfill(g, 'units');
 		g.templates.forEach((s, i) => pane.appendChild(h('div', { class: 'gd-card' },
 			h('div', { class: 'gd-cardh' }, h('input', { type: 'text', value: s.name, oninput: (e) => { s.name = e.target.value; save(g); } }), h('small', {}, s.battalions + ' battalions · ' + s.supportCount + ' support'),
 				FB.templates.byId(s.id) ? h('button', { class: 'ibtn', title: 'Update from Templates (pictures and layout as they are now)', onclick: () => { g.templates[i] = Object.assign(FB.templates.snapshot(FB.templates.byId(s.id)), { note: s.note || '', name: s.name }); save(g); render(); } }, FB.icon('undo', 14)) : null,
