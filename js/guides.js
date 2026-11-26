@@ -30,6 +30,46 @@
 		G.list.forEach((g) => overlaySel.appendChild(FB.h('option', { value: g.id, selected: g.id === overlayId }, 'Order: ' + (g.tag ? g.tag + ' · ' : '') + (g.title || '(untitled)'))));
 		overlaySel.value = overlayId;
 	}
+	/* ---------- build the focus order by clicking focuses on the tree ---------- */
+	let banner = null;
+	function stopPick(back) {
+		FB.canvas.pick = null;
+		if (banner) { banner.remove(); banner = null; }
+		document.body.classList.remove('gd-picking');
+		if (back) { G.tab = 'focus'; FB.modes.set('guides'); }
+	}
+	function startPick(g) {
+		const choices = treesFor(g);
+		if (!choices.length) { FB.toast(g.tag ? 'Open your mod first (Trees tab): there is no tree of ' + natLabel(g.tag) + ' to click on.' : 'Choose the nation of this guide first.', 'warn'); return; }
+		if (!choices.some((c) => c.key === G.treeKey)) G.treeKey = choices[0].key;
+		const label = (choices.find((c) => c.key === G.treeKey) || {}).label || '';
+		if (G.treeKey !== '__current' && FB.ws.current !== G.treeKey) FB.ws.switchTo(G.treeKey);
+		overlayId = g.id; refreshOverlay();
+		FB.modes.set('trees');
+		if (FB.ui.setFull) FB.ui.setFull(false);
+		applyOverlay();
+		setTimeout(() => FB.canvas.fit(), 40);
+		const count = h('b', {});
+		const sync = () => { count.textContent = g.focus.filter((s) => s.type === 'focus').length; };
+		FB.canvas.pick = (f) => {
+			if (!f) return;
+			const at = g.focus.findIndex((s) => s.type === 'focus' && s.id === f.id);
+			if (at >= 0) g.focus.splice(at, 1);            // clicking a focus that is already in the order takes it out again
+			else g.focus.push(stepOf(f, label));
+			save(g); sync();
+		};
+		if (banner) banner.remove();
+		banner = h('div', { class: 'gd-pickbar' },
+			FB.icon('tree', 16),
+			h('span', {}, 'Click the focuses in the order a player should take them. Click a numbered focus again to take it out.'),
+			h('span', { class: 'gd-pickcount' }, count, ' in the order'),
+			h('button', { class: 'btn small', onclick: () => { const i = g.focus.map((s) => s.type).lastIndexOf('focus'); if (i >= 0) { g.focus.splice(i, 1); save(g); sync(); } } }, FB.icon('undo', 13), 'Undo last'),
+			h('button', { class: 'btn small primary', onclick: () => stopPick(true) }, FB.icon('check', 13), 'Done'));
+		document.body.appendChild(banner);
+		document.body.classList.add('gd-picking');
+		sync();
+	}
+
 	function showOnTree(g) {
 		overlayId = g.id; refreshOverlay();
 		if (G.treeKey && G.treeKey !== '__current' && FB.ws.active && FB.ws.current !== G.treeKey) FB.ws.switchTo(G.treeKey);
@@ -345,7 +385,8 @@
 			choices.length > 1 ? choices.map((c) => h('button', { class: 'gd-treechip' + (c.key === G.treeKey ? ' on' : ''), title: c.count + ' focuses', onclick: () => { G.treeKey = c.key; render(); } }, c.label)) : null);
 		const bar = h('div', { class: 'gd-bar' }, FB.icon('tree', 15), sel,
 			h('button', { class: 'dzf-btn', disabled: !proj, onclick: () => { suggestOrder(proj).forEach((f) => g.focus.push(stepOf(f, treeLabel))); save(g); render(); } }, FB.icon('sparkles', 14), 'Add whole tree in suggested order'),
-			h('button', { class: 'dzf-btn gold', disabled: !g.focus.some((s) => s.type === 'focus'), title: 'Open the tree with the order shown as numbers on the focuses', onclick: () => showOnTree(g) }, FB.icon('tree', 14), 'Show order on the tree'),
+			h('button', { class: 'dzf-btn gold', title: 'Open the tree and click the focuses in the order a player should take them', onclick: () => startPick(g) }, FB.icon('tree', 14), 'Click focuses on the tree'),
+			h('button', { class: 'dzf-btn', disabled: !g.focus.some((s) => s.type === 'focus'), title: 'Open the tree with the order shown as numbers on the focuses', onclick: () => showOnTree(g) }, FB.icon('eye', 14), 'Show order on the tree'),
 			h('button', { class: 'dzf-btn', onclick: () => { g.focus.push({ type: 'heading', name: 'Phase ' + (g.focus.filter((s) => s.type === 'heading').length + 1), note: '' }); save(g); render(); } }, FB.icon('plus', 14), 'Add heading'),
 			h('button', { class: 'dzf-btn', disabled: !g.focus.length, onclick: () => { if (confirm('Remove every step from this guide?')) { g.focus = []; save(g); render(); } } }, FB.icon('trash', 14), 'Clear'));
 		pane.appendChild(bar);
@@ -666,6 +707,7 @@
 			body = root.firstChild;
 			FB.modes.register('guides', 'Guides', 'scroll', root, { open() { render(); }, close() {} });
 			FB.on('ws', () => { if (FB.modes.current === 'guides') render(); });
+			FB.on('mode', (m) => { if (m !== 'trees' && FB.canvas.pick) stopPick(false); });
 			overlaySel = FB.h('select', { id: 'guide-overlay', title: 'Show the focus order of a guide as numbers on this tree', onchange: (e) => { overlayId = e.target.value; applyOverlay(); } });
 			const tools = document.getElementById('canvas-tools');
 			if (tools) tools.insertBefore(overlaySel, tools.firstChild);

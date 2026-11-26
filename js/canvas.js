@@ -184,6 +184,7 @@
 			e.preventDefault();
 			return;
 		}
+		if (u && FB.canvas.pick) { e.preventDefault(); FB.canvas.pick(FB.getFocus(u)); return; }   // building a guide's focus order
 		if (u) {
 			if (FB.state.selected !== u) FB.select(u);
 			if (!FB.dev.on) { e.preventDefault(); return; } // normal mode: nodes can be selected, never moved
@@ -298,6 +299,7 @@
 		window.addEventListener('pointerdown', (e) => { if (ctxMenu && !ctxMenu.contains(e.target)) hideMenu(); }, true);
 		vp.addEventListener('dblclick', (e) => {
 			const hit = nodeFromEvent(e);
+			if (FB.canvas.pick) return;
 			if (hit) { if (FB.ui.setFull) { FB.select(hit); FB.ui.setFull(true); } return; }
 			if (!FB.dev.on) return;
 			const w = toWorld(e.clientX, e.clientY), c = toCell(w.x, w.y);

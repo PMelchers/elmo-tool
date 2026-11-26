@@ -29,6 +29,7 @@
 			if (prev) { prev.root.hidden = true; if (prev.hooks.close) prev.hooks.close(); }
 			current = name;
 			document.body.dataset.mode = name;
+			if (FB.emit) FB.emit('mode', name);
 			const next = modes[name];
 			if (next) { next.root.hidden = false; if (next.hooks.open) next.hooks.open(); }
 			document.querySelectorAll('#mode-switch button').forEach((b) => b.classList.toggle('on', b.dataset.mode === name));
