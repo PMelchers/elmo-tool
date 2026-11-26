@@ -13,7 +13,7 @@
 		let c = {};
 		try { c = JSON.parse(localStorage.getItem(LS_CFG) || '{}'); } catch (e) { c = {}; }
 		const d = FB.MARKET_DEFAULT || {};
-		return { repo: (c.repo || d.repo || '').trim(), branch: (c.branch || d.branch || 'main').trim() };
+		return { repo: (c.repo || d.repo || '').trim(), branch: (c.branch || d.branch || 'main').trim(), publishUrl: (c.repo && c.repo !== d.repo ? c.publishUrl || '' : d.publishUrl || '').trim() };
 	};
 	const saveCfg = (c) => { try { localStorage.setItem(LS_CFG, JSON.stringify(c)); } catch (e) { /* storage unavailable */ } };
 	const validRepo = (r) => /^[A-Za-z0-9-]+\/[A-Za-z0-9._-]+$/.test(r || '');
@@ -67,8 +67,52 @@
 	}
 
 	/* ---------- publishing ---------- */
+	/** One click: the app sends the guide to the publishing service, which puts it in the marketplace. */
+	function publishOnline() {
+		const c = cfg();
+		const mine = host.myGuides();
+		if (!mine.length) { FB.toast('Make a guide first (My guides → New guide).', 'warn'); return; }
+		let name = '';
+		try { name = localStorage.getItem('focusbuilder.author') || ''; } catch (e) { name = ''; }
+		const sel = h('select', {}, mine.map((g) => h('option', { value: g.id }, (g.tag ? g.tag + ' · ' : '') + (g.title || '(untitled)') + (g.published ? '  (published, will update)' : ''))));
+		const author = h('input', { type: 'text', value: name, maxlength: 40, placeholder: 'Shown on your guide, e.g. ElmoMan' });
+		const status = h('p', { class: 'muted' });
+		const btn = h('button', { class: 'btn primary', onclick: go }, FB.icon('upload', 14), 'Publish');
+		const close = FB.ui.modal('Publish a guide', h('div', { class: 'mk-pub' },
+			h('p', { class: 'muted' }, 'Your guide goes into the marketplace for everyone who uses Elmo tool. Pictures, designs and templates come along. You can publish it again later to update it.'),
+			h('label', { class: 'fld' }, h('span', { class: 'fld-l' }, 'Guide'), sel),
+			h('label', { class: 'fld' }, h('span', { class: 'fld-l' }, 'Your name'), author),
+			status,
+			h('div', { class: 'btn-row' }, btn, h('button', { class: 'btn', onclick: () => close() }, 'Cancel'))));
+		async function go() {
+			const g = mine.find((x) => x.id === sel.value);
+			const who = author.value.trim();
+			if (!who) { status.textContent = 'Fill in your name.'; author.focus(); return; }
+			try { localStorage.setItem('focusbuilder.author', who); } catch (e) { /* ignore */ }
+			btn.disabled = true; btn.textContent = 'Publishing…'; status.textContent = 'Packing the guide…';
+			try {
+				const data = await host.publishData(g);
+				const body = JSON.stringify({ guide: data, author: who, id: g.published && g.published.id, key: g.published && g.published.key });
+				if (body.length > 4.2 * 1048576) throw new Error('The guide is too big to publish (over 4 MB). Use fewer or smaller pictures.');
+				status.textContent = 'Sending…';
+				const r = await fetch(c.publishUrl, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body });
+				const res = await r.json().catch(() => ({}));
+				if (!r.ok || !res.ok) throw new Error(res.error || 'The publishing service answered ' + r.status + '.');
+				host.setPublished(g, { id: res.id, key: res.key, file: res.file, at: new Date().toISOString() });
+				close();
+				FB.toast(res.status === 'review' ? 'Sent! It appears after the owner approves it.' : (res.updated ? 'Updated' : 'Published') + '! It shows in the marketplace in about a minute.', 'ok');
+				setTimeout(() => loadIndex(true), 60000);
+			} catch (e) {
+				status.textContent = (e && e.message) || String(e);
+				if (/Failed to fetch|NetworkError/i.test(status.textContent)) status.textContent = 'Could not reach the publishing service. Check your internet connection.';
+				btn.disabled = false; btn.textContent = 'Publish';
+			}
+		}
+	}
+
 	function publish() {
 		const c = cfg();
+		if (c.publishUrl) { publishOnline(); return; }
 		const mine = host.myGuides();
 		if (!mine.length) { FB.toast('Make a guide first (My guides → New guide).', 'warn'); return; }
 		let pick = mine[0].id;

@@ -156,6 +156,35 @@
 
 	/* ---------- what the marketplace needs from the guides ---------- */
 	const slugOf = (g) => (g.title || 'guide').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'guide';
+	/** Guides can come from other people: keep only harmless drawing parts of a tank / ship drawing. */
+	const SVG_OK = new Set(['svg', 'g', 'path', 'rect', 'circle', 'ellipse', 'line', 'polyline', 'polygon', 'text', 'defs', 'lineargradient', 'stop', 'title']);
+	function safeSvg(src) {
+		if (!src || typeof src !== 'string') return '';
+		try {
+			const doc = new DOMParser().parseFromString(src, 'image/svg+xml');
+			const root = doc.documentElement;
+			if (!root || root.nodeName.toLowerCase() !== 'svg') return '';
+			const walk = (el) => {
+				[...el.children].forEach((c) => { if (!SVG_OK.has(c.nodeName.toLowerCase())) c.remove(); else walk(c); });
+				[...el.attributes].forEach((a) => { const n = a.name.toLowerCase(); if (n.startsWith('on') || n.includes('href') || /javascript:|url\(/i.test(a.value)) el.removeAttribute(a.name); });
+			};
+			walk(root);
+			return new XMLSerializer().serializeToString(root);
+		} catch (e) { return ''; }
+	}
+	/** Pictures get smaller (1280 px, WebP) before a guide goes online, so it stays quick to download. */
+	async function compactImage(dataUrl) {
+		try {
+			const bmp = await createImageBitmap(await (await fetch(dataUrl)).blob());
+			const k = Math.min(1, 1280 / Math.max(bmp.width, bmp.height));
+			const c = document.createElement('canvas');
+			c.width = Math.round(bmp.width * k); c.height = Math.round(bmp.height * k);
+			c.getContext('2d').drawImage(bmp, 0, 0, c.width, c.height);
+			const out = c.toDataURL('image/webp', 0.8);
+			return out.length < dataUrl.length ? out : dataUrl;
+		} catch (e) { return dataUrl; }
+	}
+
 	const marketHost = {
 		myGuides: () => G.list.slice(),
 		nationName: (tag) => natLabel(tag),
@@ -168,9 +197,17 @@
 		},
 		async exportFile(g) {
 			const full = await withImageData(g);
-			delete full.market;
+			delete full.market; delete full.published;
 			return { name: (g.tag ? g.tag.toLowerCase() + '-' : '') + slugOf(g) + '.guide.json', text: JSON.stringify(full, null, 2) };
-		}
+		},
+		/** The guide as the publishing service gets it: pictures inside and made smaller. */
+		async publishData(g) {
+			const full = await withImageData(g);
+			delete full.market; delete full.published;
+			for (const im of full.images) if (im.data) im.data = await compactImage(im.data);
+			return full;
+		},
+		setPublished(g, info) { const x = G.list.find((y) => y.id === g.id); if (x) { x.published = info; persist(); } }
 	};
 
 	/** Accepts one or more .json files: a single guide, or a list of guides (from "Export all"). */
@@ -431,7 +468,7 @@
 		const dials = s.dials ? Object.entries(s.dials).filter((x) => typeof x[1] === 'number') : [];
 		return h('div', { class: 'gd-dz' },
 			h('div', { class: 'gd-dzl' },
-				s.svg ? h('div', { class: 'gd-bp', html: s.svg }) : null,
+				s.svg ? h('div', { class: 'gd-bp', html: safeSvg(s.svg) }) : null,
 				dials.length ? h('div', { class: 'gd-clicks' }, dials.map(([k, v]) => h('span', {}, k + ' ', h('b', {}, v), ' clicks'))) : null,
 				s.cost ? h('div', { class: 'gd-cost' }, 'Production cost ', h('b', {}, s.cost + ' IC')) : null),
 			h('div', { class: 'gd-dzr' },
@@ -595,7 +632,7 @@
 		const cell = (c) => '<span class="c' + (c ? ' on' : '') + (c && pic(c.icon) ? ' img' : '') + '"' + (c ? ' style="--gc:' + FB.templates.unitColor(c.group) + '" title="' + esc(c.name) + '"' : '') + '>' + (c ? (pic(c.icon) || esc(c.abbr)) : '') + '</span>';
 		let n = 0;
 		const focus = g.focus.map((s) => s.type === 'heading' ? '<h3>' + esc(s.name) + '</h3>' : '<div class="step"><span class="n">' + (++n) + '</span>' + pic(stepIcon(s), 'fi') + '<div><b>' + esc(s.name) + '</b> <small>' + s.weeks + ' weeks</small>' + (s.note ? '<p>' + esc(s.note) + '</p>' : '') + '</div></div>').join('\n');
-		const design = (s) => '<div class="card"><h3>' + esc(s.name) + '</h3><small>' + esc([s.family, s.variantLabel].filter(Boolean).join(' · ')) + '</small><div class="dz">' + (s.svg ? '<div class="svg">' + s.svg + '</div>' : '') +
+		const design = (s) => '<div class="card"><h3>' + esc(s.name) + '</h3><small>' + esc([s.family, s.variantLabel].filter(Boolean).join(' · ')) + '</small><div class="dz">' + (s.svg ? '<div class="svg">' + safeSvg(s.svg) + '</div>' : '') +
 			'<div class="mods">' + s.modules.map((m) => '<div class="mod' + (m.name ? '' : ' empty') + '"><div class="mp">' + (pic(m.icon) || (m.name ? '<span>' + esc(m.tier || '•') + '</span>' : '')) + '</div><b>' + esc(m.name || 'Empty') + '</b><small>' + esc(m.slot) + '</small></div>').join('') + '</div></div>' +
 			(s.dials && Object.keys(s.dials).length ? '<p class="clk">' + Object.entries(s.dials).filter((x) => typeof x[1] === 'number').map(([k, v]) => esc(k) + ' <b>' + v + '</b> clicks').join(' · ') + (s.cost ? ' · cost <b>' + s.cost + ' IC</b>' : '') + '</p>' : '') +
 			(s.stats && s.stats.length ? '<div class="st">' + s.stats.map((x) => '<div><span>' + esc(x.label) + '</span><b>' + esc(x.value) + '</b></div>').join('') + '</div>' : '') +
