@@ -310,3 +310,6 @@ body[data-mode]:not([data-mode=trees]) #topbar .tb-group, body[data-mode]:not([d
 .explain { max-width: 620px; display: flex; flex-direction: column; gap: 10px; }
 .explain p { margin: 0; line-height: 1.5; }
 .explain .mod-list { max-height: 320px; overflow: auto; }
+.nohelper-pill { color: #17140a !important; background: var(--warn) !important; font-weight: 600; }
+.nohelper-pill .ic { color: #17140a !important; }
+.explain ul, .explain ol { margin: 0; padding-left: 20px; line-height: 1.6; }

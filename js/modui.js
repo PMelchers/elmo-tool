@@ -15,6 +15,36 @@
 	const recents = () => { try { return JSON.parse(localStorage.getItem(RECENT_KEY) || '[]'); } catch (e) { return []; } };
 	const remember = (name, path) => { try { localStorage.setItem(RECENT_KEY, JSON.stringify([{ name, path }].concat(recents().filter((r) => r.path !== path)).slice(0, 5))); } catch (e) { /* storage unavailable */ } };
 
+	/* ---------- running without the helper (Python missing): say so and explain how to fix it ---------- */
+	const PY_URL = 'https://www.python.org/downloads/windows/';
+	function pythonHelp() {
+		const step = (n, ...k) => h('li', {}, ...k);
+		const close = FB.ui.modal('Install Python to unlock everything', h('div', { class: 'explain' },
+			h('p', {}, 'Elmo tool is running ', h('b', {}, 'without its helper'), ', because Python is not installed (or not found) on this PC. That limits it:'),
+			h('ul', {},
+				h('li', {}, 'Steam workshop mods (like BFFU 2) cannot be opened: the browser blocks those folders.'),
+				h('li', {}, 'No game pictures in the Designer, Templates and focus trees.'),
+				h('li', {}, 'No automatic updates.')),
+			h('p', {}, h('b', {}, 'Fix it in 2 minutes (free):')),
+			h('ol', {},
+				step(1, 'Click ', h('b', {}, 'Download Python'), ' below and run the installer.'),
+				step(2, h('b', {}, 'Important: '), 'tick ', h('b', {}, '"Add python.exe to PATH"'), ' at the bottom of the first screen, then click ', h('b', {}, 'Install Now'), '.'),
+				step(3, 'Close Elmo tool and start it again with ', h('code', {}, 'Elmo tool.bat'), ' (not by opening index.html).')),
+			h('p', { class: 'muted small' }, 'Already installed? Then it was installed without "Add python.exe to PATH". Run the installer again, choose Modify → Next, tick "Add Python to environment variables", and finish.'),
+			h('div', { class: 'btn-row' },
+				h('button', { class: 'btn primary', onclick: () => window.open(PY_URL, '_blank', 'noopener') }, FB.icon('download', 14), 'Download Python'),
+				h('button', { class: 'btn', onclick: () => close() }, 'Continue in limited mode'))));
+	}
+	function noHelper() {
+		const help = $('btn-help');
+		if (help && !$('btn-nohelper')) help.parentNode.insertBefore(h('button', { id: 'btn-nohelper', class: 'tb nohelper-pill', title: 'Python is missing: some features are off. Click for the fix.', onclick: pythonHelp }, FB.icon('alert', 14), 'Limited mode: install Python'), help);
+		let shown = false;
+		try { shown = sessionStorage.getItem('focusbuilder.pyhelp') === '1'; sessionStorage.setItem('focusbuilder.pyhelp', '1'); } catch (e) { shown = false; }
+		// show it once per session, after the welcome window (if any) has been closed
+		if (!shown) { let tries = 0; const t = setInterval(() => { if (!$('modal-root').children.length || ++tries > 600) { clearInterval(t); pythonHelp(); } }, 700); }
+	}
+	FB.ui.pythonHelp = pythonHelp;
+
 	/* ---------- clear explanations when a folder cannot be opened ---------- */
 	const WORKSHOP_HINT = 'Steam workshop mods are in Steam\\steamapps\\workshop\\content\\394360\\<number of the mod>.';
 	function copyBtn(text) {
@@ -293,7 +323,7 @@
 	FB.ui.initMod = function () {
 		renderWsBar();
 		if (FB.ws.supported()) FB.ws.remembered().then(() => renderWsBar());
-		FB.server.init().then((ok) => { if (ok) { renderWsBar(); FB.gd.load(false); FB.gfx.loadIcons(); if (FB.update) FB.update.check(false); } });
+		FB.server.init().then((ok) => { if (ok) { renderWsBar(); FB.gd.load(false); FB.gfx.loadIcons(); if (FB.update) FB.update.check(false); } else noHelper(); });
 		updateBadge();
 	};
 })(window.FB = window.FB || {});
