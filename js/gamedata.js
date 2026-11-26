@@ -20,6 +20,28 @@
 	}
 	const text = (f) => FB.fsutil.readText(f.handle);
 
+	/** What an autocomplete needs to know about a national spirit: picture, effects, country, kind. */
+	const MOD_NAMES = { political_power_gain: 'political power', political_power_factor: 'political power', stability_factor: 'stability', war_support_factor: 'war support',
+		consumer_goods_factor: 'consumer goods', production_speed_buildings_factor: 'construction speed', industrial_capacity_factory: 'factory output', research_speed_factor: 'research speed',
+		conscription: 'recruitable population', conscription_factor: 'recruitable population', army_org_factor: 'army organization', army_attack_factor: 'army attack', army_defence_factor: 'army defence',
+		training_time_factor: 'training time', production_factory_efficiency_gain_factor: 'production efficiency growth', local_resources_factor: 'resource extraction', experience_gain_army: 'army experience',
+		experience_gain_navy: 'navy experience', experience_gain_air: 'air experience', monthly_population: 'monthly population', max_planning: 'planning', supply_consumption_factor: 'supply use' };
+	function ideaInfo(e, category, hidden) {
+		const g = (k) => e.v.find((x) => x.k === k);
+		const pic = g('picture');
+		const info = { category, hidden: !!hidden, pic: 'GFX_idea_' + (pic && typeof pic.v === 'string' ? pic.v : e.k), mods: [] };
+		const m = g('modifier');
+		if (m && isBlock(m)) m.v.forEach((x) => {
+			if (typeof x.v !== 'string' || !/^-?[\d.]+$/.test(x.v)) return;
+			const n = Number(x.v), pct = /factor|speed|efficiency|_gain_factor|conscription$/.test(x.k) || Math.abs(n) < 1 && !/gain$|^max_|^monthly/.test(x.k);
+			info.mods.push((n > 0 ? '+' : '') + (pct ? Math.round(n * 1000) / 10 + '%' : n) + ' ' + (MOD_NAMES[x.k] || x.k.replace(/_/g, ' ')));
+		});
+		const allowed = g('allowed');
+		const tagIn = (b) => { let t = ''; (b || []).forEach((x) => { if (!t && (x.k === 'original_tag' || x.k === 'tag') && typeof x.v === 'string') t = x.v; else if (!t && isBlock(x)) t = tagIn(x.v); }); return t; };
+		info.tag = (allowed && isBlock(allowed) ? tagIn(allowed.v) : '') || (/^([A-Z][A-Z0-9]{2})_/.exec(e.k) || [])[1] || '';
+		return info;
+	}
+
 	GD.load = async function (force) {
 		if (GD.loading) return;
 		if (GD.ready && !force && GD.sig === sig()) return;
@@ -47,7 +69,12 @@
 				say(`Reading ${where}: technologies…`);
 				for (const f of await files(s.dir, 'common/technologies', /\.txt$/i)) FB.importer.parse(await text(f)).forEach((t) => { if (t.k === 'technologies' && isBlock(t)) t.v.forEach((e) => { if (isBlock(e)) add('tech', e.k, s.label); }); });
 				say(`Reading ${where}: ideas…`);
-				for (const f of await files(s.dir, 'common/ideas', /\.txt$/i)) FB.importer.parse(await text(f)).forEach((t) => { if ((t.k === 'ideas' || t.k === 'hidden_ideas') && isBlock(t)) t.v.forEach((c) => { if (isBlock(c)) c.v.forEach((e) => { if (isBlock(e) && !['use_list_view', 'designer', 'law'].includes(e.k)) add('idea', e.k, s.label); }); }); });
+				for (const f of await files(s.dir, 'common/ideas', /\.txt$/i)) FB.importer.parse(await text(f)).forEach((t) => {
+					if ((t.k === 'ideas' || t.k === 'hidden_ideas') && isBlock(t)) t.v.forEach((c) => {
+						if (!isBlock(c)) return;
+						c.v.forEach((e) => { if (isBlock(e) && !['use_list_view', 'designer', 'law'].includes(e.k)) add('idea', e.k, s.label, ideaInfo(e, c.k, t.k === 'hidden_ideas')); });
+					});
+				});
 				say(`Reading ${where}: decisions…`);
 				const NOT_DECISION = new Set(['allowed', 'visible', 'available', 'icon', 'priority', 'cost', 'modifier', 'target_trigger', 'ai_will_do', 'custom_cost_trigger', 'cancel_trigger', 'remove_trigger', 'complete_effect', 'timeout_effect', 'fire_only_once', 'days_remove', 'days_re_enable']);
 				for (const f of await files(s.dir, 'common/decisions', /\.txt$/i)) FB.importer.parse(await text(f)).forEach((c) => { if (isBlock(c)) c.v.forEach((e) => { if (isBlock(e) && !NOT_DECISION.has(e.k)) add('decision', e.k, s.label); }); });
@@ -70,7 +97,7 @@
 		const lists = {};
 		const nameOf = { tag: (i) => loc[i.id] || i.id, state: (i) => loc['STATE_' + i.id] || i.fileName || '', tech: (i) => loc[i.id] || pretty(i.id), idea: (i) => loc[i.id] || pretty(i.id), decision: (i) => loc[i.id] || pretty(i.id), event: () => '', goalIcon: (i) => pretty(i.id.replace(/^GFX_goal_/, '')), mioIcon: (i) => pretty(i.id.replace(/^GFX_/, '')) };
 		Object.keys(L).forEach((t) => {
-			lists[t] = [...L[t].values()].map((i) => ({ id: i.id, name: nameOf[t](i), src: i.src }));
+			lists[t] = [...L[t].values()].map((i) => Object.assign({ id: i.id, name: nameOf[t](i), src: i.src }, t === 'idea' ? { pic: i.pic, mods: i.mods, tag: i.tag, category: i.category, hidden: i.hidden } : {}));
 			if (t === 'state') lists[t].sort((a, b) => Number(a.id) - Number(b.id)); else lists[t].sort((a, b) => a.id.localeCompare(b.id));
 		});
 		GD.lists = lists;
@@ -97,7 +124,22 @@
 		const list = GD.lists[type] || [];
 		const icon = { tag: 'flag', state: 'map', tech: 'flask', idea: 'bulb', decision: 'scroll', event: 'scroll', goalIcon: 'star', mioIcon: 'factory' }[type] || 'tag';
 		const cat = { tag: 'Countries', state: 'States', tech: 'Technologies', idea: 'Ideas / national spirits', decision: 'Decisions', event: 'Events in your mod', goalIcon: 'Focus icons', mioIcon: 'MIO icons' }[type] || '';
-		list.forEach((i) => { if (!defined.some((d) => d.key === i.id)) out.push({ label: i.name && i.name !== i.id ? i.name : i.id, key: i.id + ' ' + i.name, value: i.id, sub: i.id, cat: i.src === 'mod' ? cat + ' · your mod' : cat, icon }); });
+		const myTag = (FB.state.project.meta.tag || '').toUpperCase();
+		list.forEach((i) => {
+			if (defined.some((d) => d.key === i.id)) return;
+			const it = { label: i.name && i.name !== i.id ? i.name : i.id, key: i.id + ' ' + i.name, value: i.id, sub: i.id, cat: i.src === 'mod' ? cat + ' · your mod' : cat, icon };
+			if (type === 'idea') {
+				it.pic = i.pic;
+				it.desc = (i.mods || []).slice(0, 4).join(' · ') || (i.hidden ? 'Hidden spirit (no visible effects)' : '');
+				it.kw = [i.category, i.tag, (i.mods || []).join(' ')].join(' ');
+				if (myTag && i.tag === myTag) { it.boost = 3; it.cat = 'Spirits of ' + (GD.label('tag', myTag) || myTag); }
+				else if (i.tag && myTag) it.boost = -1;
+				if (i.src === 'mod') it.boost = (it.boost || 0) + 1;
+				if (i.category && i.category !== 'country') it.cat += ' · ' + i.category.replace(/_/g, ' ');
+			} else if (type === 'goalIcon') { it.pic = i.id; if (i.src === 'mod') it.boost = 1; }
+			out.push(it);
+		});
+		if (type === 'idea' || type === 'goalIcon') out.sort((a, b) => (b.boost || 0) - (a.boost || 0));
 		return out;
 	};
 

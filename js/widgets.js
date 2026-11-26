@@ -36,7 +36,7 @@
 				if (!s) { ok = false; break; }
 				score += s;
 			}
-			if (ok) scored.push([score + boost(it), it]);
+			if (ok) scored.push([score + boost(it) + (it.boost || 0) * 2, it]);
 		}
 		scored.sort((a, b) => b[0] - a[0]);
 		let res = scored.map((x) => x[1]);
@@ -101,7 +101,9 @@
 			let lastCat = null;
 			list.forEach((it, i) => {
 				if (!q.trim() && it.cat && it.cat !== lastCat) { menu.appendChild(h('div', { class: 'combo-cat' }, it.cat)); lastCat = it.cat; }
-				const bubble = it.icon ? h('span', { class: 'ci-ico', style: it.color ? { color: it.color, background: it.color + '22' } : null }, FB.icon(it.icon, 15)) : null;
+				const bubble = it.pic && FB.gfx && FB.gfx.ready && FB.gfx.find([it.pic])
+					? h('span', { class: 'ci-pic' }, FB.gfx.picture(it.pic, 'ci-pic-img'))
+					: it.icon ? h('span', { class: 'ci-ico', style: it.color ? { color: it.color, background: it.color + '22' } : null }, FB.icon(it.icon, 15)) : null;
 				menu.appendChild(h('div', { class: 'combo-item' + (i === active ? ' active' : ''),
 					onmousedown: (e) => { e.preventDefault(); pick(it); },
 					onmousemove: () => { if (active !== i) { active = i; menu.querySelectorAll('.combo-item').forEach((r, j) => r.classList.toggle('active', j === i)); } } },

@@ -313,3 +313,53 @@ body[data-mode]:not([data-mode=trees]) #topbar .tb-group, body[data-mode]:not([d
 .nohelper-pill { color: #17140a !important; background: var(--warn) !important; font-weight: 600; }
 .nohelper-pill .ic { color: #17140a !important; }
 .explain ul, .explain ol { margin: 0; padding-left: 20px; line-height: 1.6; }
+
+/* ---------- focus panel: picture in the header, full screen view ---------- */
+.insp-head { display: flex; align-items: center; gap: 14px; }
+.insp-pic { flex: none; width: 64px; height: 56px; display: flex; align-items: center; justify-content: center; }
+.insp-pic-img { max-width: 100%; max-height: 100%; object-fit: contain; }
+.insp-tt { flex: 1; min-width: 0; }
+.insp-sum { display: flex; align-items: center; gap: 6px; margin-top: 6px; color: var(--muted); font-size: 14px; }
+#app.insp-full #right { position: fixed; top: 52px; left: 0; right: 0; bottom: 0; z-index: 45; border: 0; visibility: visible !important; background: var(--bg); }
+#app.insp-full .resizer { display: none; }
+#app.insp-full #inspector { max-width: 1440px; margin: 0 auto; padding: 0 32px 80px; column-count: 2; column-gap: 32px; font-size: 15px; }
+#app.insp-full #inspector > * { break-inside: avoid; }
+#app.insp-full .insp-head, #app.insp-full .ro-note { column-span: all; position: static; padding: 28px 4px 22px; border-bottom: 1px solid var(--line); margin-bottom: 8px; background: none; }
+#app.insp-full .insp-pic { width: 120px; height: 106px; }
+#app.insp-full .insp-title { font-size: 28px; }
+#app.insp-full .sec { border: 1px solid var(--line); border-radius: 12px; margin: 0 0 22px; background: var(--panel); overflow: hidden; display: block; }
+#app.insp-full .sec > summary { font-size: 16px; padding: 16px 20px; }
+#app.insp-full .sec-body { padding: 6px 20px 22px; }
+#app.insp-full .ecard { padding: 14px 16px; }
+#app.insp-full .ecard-t b { font-size: 16px; }
+#app.insp-full input[type=text], #app.insp-full input[type=number], #app.insp-full textarea, #app.insp-full select { font-size: 15px; }
+#app.insp-full .code-prev { font-size: 13px; }
+@media (max-width: 1000px) { #app.insp-full #inspector { column-count: 1; padding: 0 16px 60px; } }
+
+/* icon field with a picture */
+.icon-pick { display: flex; gap: 10px; align-items: center; }
+.icon-prev { flex: none; width: 58px; height: 51px; display: flex; align-items: center; justify-content: center; border: 1px solid var(--line2); border-radius: 8px; background: var(--field); cursor: pointer; }
+body.normal .icon-prev { cursor: default; }
+.icon-prev-img { max-width: 52px; max-height: 46px; object-fit: contain; }
+.icon-col { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 6px; align-items: flex-start; }
+.icon-col input { width: 100%; }
+
+/* icon picker */
+.fi-wrap { display: flex; flex-direction: column; gap: 10px; width: min(1100px, 86vw); }
+.fi-bar { display: flex; gap: 8px; flex-wrap: wrap; }
+.fi-bar input { flex: 1 1 280px; width: auto; }
+.fi-bar select { width: auto; flex: 0 0 auto; }
+.fi-wrap > p { margin: 0; }
+.fi-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(112px, 1fr)); gap: 8px; max-height: 62vh; overflow-y: auto; padding: 2px; }
+.fi-tile { display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 8px 4px 6px; background: var(--field); border: 1px solid var(--line); border-radius: 8px; color: var(--text); cursor: pointer; min-height: 116px; font: inherit; }
+.fi-tile:hover { border-color: var(--accent); }
+.fi-tile.on { border-color: var(--accent); box-shadow: 0 0 0 2px rgba(201,169,90,.3); }
+.fi-tile.new { border-style: dashed; border-color: var(--accent); }
+.fi-pic { width: 88px; height: 78px; object-fit: contain; }
+.fi-name { font-size: 11px; color: var(--muted); text-align: center; line-height: 1.2; max-width: 100%; overflow: hidden; text-overflow: ellipsis; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
+
+/* pictures in autocomplete lists */
+.ci-pic { width: 40px; height: 36px; flex: none; display: inline-flex; align-items: center; justify-content: center; }
+.ci-pic-img { max-width: 40px; max-height: 36px; object-fit: contain; }
+#app.insp-full #inspector { overflow-x: hidden; }
+#app.insp-full .ro-note { padding: 10px 14px; margin: 18px 4px 0; border: 1px solid var(--line2); border-bottom: 1px solid var(--line2); }

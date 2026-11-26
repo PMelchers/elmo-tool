@@ -22,7 +22,7 @@ HOME = pathlib.Path.home()
 DOC_DIRS = [HOME / 'Documents', HOME / 'OneDrive' / 'Documents']
 HOI4_MOD_DIRS = [d / 'Paradox Interactive' / 'Hearts of Iron IV' / 'mod' for d in DOC_DIRS]
 BACKUP_ROOT = str(DOC_DIRS[0] / 'Focus Builder backups')
-WRITE_EXT = {'.txt', '.yml', '.yaml', '.md', '.json', '.mod'}
+WRITE_EXT = {'.txt', '.yml', '.yaml', '.md', '.json', '.mod', '.gfx', '.dds'}
 MAX_BODY = 40 * 1024 * 1024
 STATIC_DIRS = {'css', 'js', 'assets', 'tests'}
 MIME = {'.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8',

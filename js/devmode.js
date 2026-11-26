@@ -27,7 +27,7 @@
 		if (first && !first.classList.contains('ro-note') && root.querySelector('.fld, .card, textarea, input')) {
 			root.insertBefore(FB.h('div', { class: 'ro-note' }, FB.icon('eye', 14), 'View only. Switch to Development mode (top bar) to edit.'), first);
 		}
-		root.querySelectorAll('input, textarea, select, button').forEach((e) => { e.disabled = true; });
+		root.querySelectorAll('input, textarea, select, button:not(.ro-keep)').forEach((e) => { e.disabled = true; });
 	}
 
 	function apply() {

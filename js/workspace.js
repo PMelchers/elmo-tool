@@ -295,6 +295,8 @@
 			written.push(path);
 		}
 
+		if (FB.focusGfx) await FB.focusGfx.writePending(ws, backup, written);   // new focus pictures (.dds + sprite file)
+
 		const chPath = 'FocusBuilder_changelog.md';
 		const existing = await tryRead(ws.dir, chPath);
 		const ver = { label: (label || '').trim() || FB.nextVersionLabel(existing), date: new Date().toISOString(), notes: notes || '', groups: groups.map((g) => ({ tree: g.tree, tag: g.tag, lines: g.lines })) };

@@ -42,6 +42,7 @@
 		const iconInput = h('input', { type: 'text', value: f.icon || '', placeholder: FB.state.project.meta.defaultIcon || 'GFX_goal_unknown', autocomplete: 'off', spellcheck: 'false',
 			oninput: (e) => { f.icon = e.target.value.trim(); touch('icon'); } });
 		FB.attachCombo(iconInput, { items: () => FB.suggestItems('icon'), clear: false, browse: true, limit: 200, group: 'field:icon', onPick: (it) => { f.icon = it.value || it.key; iconInput.value = f.icon; touch('icon'); } });
+		const pickIcon = () => FB.focusGfx.openPicker(f.icon, (name) => { f.icon = name; iconInput.value = name; touch('icon', { full: true }); redraw(); });
 		const daysLbl = h('span', { class: 'fld-hint' }, FB.weeksToText(f.weeks));
 		const weeks = h('input', { type: 'number', min: 0, step: 1, value: f.weeks, oninput: (e) => { f.weeks = e.target.value === '' ? 0 : Number(e.target.value); daysLbl.textContent = FB.weeksToText(f.weeks); touch('weeks'); } });
 		const chips = h('div', { class: 'chips' }, [2, 5, 10, 15, 20, 30, 45].map((w) => h('button', { class: 'chip-btn', onclick: () => { f.weeks = w; weeks.value = w; daysLbl.textContent = FB.weeksToText(w); touch('weeks'); } }, w + ' wk')));
@@ -49,7 +50,10 @@
 			field('Name of the focus', nameInput, 'The title players see on the tree.', 'tag'),
 			h('div', { class: 'row2' },
 				field('Duration', h('div', {}, h('div', { class: 'affix' }, weeks, h('span', { class: 'unit' }, 'weeks')), daysLbl), null, 'clock'),
-				field('Icon', iconInput, 'Real icon names from the game. Click to browse, or type to search.', 'star')),
+				field('Icon', h('div', { class: 'icon-pick' },
+					h('span', { class: 'icon-prev', title: 'Choose a picture', onclick: () => { if (FB.dev.on) pickIcon(); } }, FB.gfx ? FB.gfx.picture(f.icon || FB.state.project.meta.defaultIcon || 'GFX_goal_unknown', 'icon-prev-img') : null),
+					h('div', { class: 'icon-col' }, iconInput, h('button', { class: 'btn small', onclick: pickIcon }, FB.icon('image', 13), 'Choose picture…'))),
+					'Pick from every icon of the game and your mod, or use your own picture.', 'star')),
 			chips,
 			field('Description shown in game', h('textarea', { rows: 4, placeholder: 'A short story or explanation, shown in the focus tooltip.', value: f.desc, oninput: (e) => { f.desc = e.target.value; touch('desc'); } }), null, 'scroll'),
 			h('div', { class: 'row2 idrow' },
@@ -103,9 +107,13 @@
 		const note = field('Notes for Claude', h('textarea', { rows: 3, placeholder: 'Anything Claude should know about this focus: balance, lore, what it should feel like…', value: f.note, oninput: (e) => { f.note = e.target.value; touch('note'); } }), 'Optional. Goes into the export and next to this focus in the code.');
 		codeEl = h('pre', { class: 'code-prev tall' }, FB.gen.focusCode(f));
 
+		const full = document.getElementById('app').classList.contains('insp-full');
 		const head = h('div', { class: 'insp-head' },
-			h('div', {}, h('div', { class: 'insp-title' }, f.name || '(unnamed)'), h('code', {}, f.id)),
+			h('span', { class: 'insp-pic' }, FB.gfx ? FB.gfx.picture(f.icon || FB.state.project.meta.defaultIcon || 'GFX_goal_unknown', 'insp-pic-img') : null),
+			h('div', { class: 'insp-tt' }, h('div', { class: 'insp-title' }, f.name || '(unnamed)'), h('code', {}, f.id),
+				full ? h('div', { class: 'insp-sum' }, FB.icon('clock', 14), FB.weeksToText(f.weeks), ' · ', FB.icon('gift', 14), f.rewards.length + ' reward' + (f.rewards.length === 1 ? '' : 's')) : null),
 			h('div', { class: 'insp-actions' },
+				h('button', { class: 'btn small ro-keep', title: full ? 'Back to the tree (Esc)' : 'Show this focus on the whole screen', onclick: () => setFull(!full) }, FB.icon('maximize', 13), full ? 'Back to tree' : 'Full screen'),
 				h('button', { class: 'btn small', onclick: () => { FB.addFocus({ from: f.uid }); FB.commit('add', { full: true }); } }, '+ Follow-up'),
 				h('button', { class: 'btn small', onclick: () => { FB.duplicateFocus(f.uid); FB.commit('dup', { full: true }); } }, 'Duplicate'),
 				h('button', { class: 'btn small danger', onclick: () => { FB.deleteFocus(f.uid); FB.commit('del', { full: true }); } }, 'Delete')));
@@ -118,6 +126,18 @@
 			section('code', 'HOI4 code for this focus', codeEl));
 		root.scrollTop = scroll;
 	}
+
+	/** The focus panel on the whole screen: bigger and easier to read. */
+	function setFull(on) {
+		const app = document.getElementById('app');
+		if (on && !FB.getSelected()) return;
+		if (app.classList.contains('insp-full') === !!on) return;
+		app.classList.toggle('insp-full', !!on);
+		renderInspector();
+		$('inspector').scrollTop = 0;
+		if (!on) setTimeout(() => FB.canvas.render(), 0);
+	}
+	document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && !$('modal-root').children.length && document.getElementById('app').classList.contains('insp-full')) setFull(false); });
 
 	function emptyInspector() {
 		const P = FB.state.project, fs = P.focuses;
@@ -434,7 +454,7 @@
 		FB.on('ws', () => { if (FB.ui.refreshMod) FB.ui.refreshMod(true); renderList(); });
 		window.addEventListener('beforeunload', (e) => { if (FB.ws.active && FB.ws.dirtyCount() > 0) { e.preventDefault(); e.returnValue = ''; } });
 		FB.on('change', (opts) => { if (opts && opts.silent) return; refreshAll(opts); });
-		FB.on('select', () => { FB.canvas.render(); renderList(); renderInspector(); });
+		FB.on('select', (u) => { FB.canvas.render(); renderList(); if (u && !FB.dev.on && FB.modes.current === 'trees') setFull(true); else if (!u) setFull(false); renderInspector(); });
 		document.querySelectorAll('#left-tabs button').forEach((b) => { b.onclick = () => setLeftTab(b.dataset.tab); });
 		document.querySelectorAll('#mobile-nav button').forEach((b) => { b.onclick = () => setView(b.dataset.view); });
 		$('btn-import').onclick = () => FB.openImport(); $('btn-new').onclick = newProject; $('btn-open').onclick = openFile; $('btn-save').onclick = saveFile;
@@ -466,6 +486,6 @@
 		setTimeout(() => FB.canvas.fit(), 30);
 		if (!saved || !saved.focuses.length) modal('Welcome to Elmo tool', helpBody(true));
 	}
-	FB.ui = Object.assign(FB.ui || {}, { modal, setLeftTab, setView, renderInspector });
+	FB.ui = Object.assign(FB.ui || {}, { modal, setLeftTab, setView, renderInspector, setFull });
 	window.addEventListener('DOMContentLoaded', init);
 })(window.FB = window.FB || {});

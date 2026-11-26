@@ -14,7 +14,7 @@
 		let ifc;
 		try { ifc = await dirHandle.getDirectoryHandle('interface'); } catch (e) { return; }
 		const files = [];
-		await FB.fsutil.walk(ifc, '', files, 0, (n, base) => /\.gfx$/i.test(n) && (wide || (base === '' && /module|equipmentdesigner|^goals\.gfx$|focus|subunit/i.test(n))));
+		await FB.fsutil.walk(ifc, '', files, 0, (n, base) => /\.gfx$/i.test(n) && (wide || (base === '' && /module|equipmentdesigner|^goals\.gfx$|focus|subunit|idea/i.test(n))));
 		for (const f of files) {
 			let text;
 			try { text = await FB.fsutil.readText(f.handle); } catch (e) { continue; }
@@ -25,7 +25,7 @@
 					const nm = e.v.find((x) => String(x.k).toLowerCase() === 'name'), tx = e.v.find((x) => String(x.k).toLowerCase() === 'texturefile');
 					const fr = e.v.find((x) => String(x.k).toLowerCase() === 'noofframes');
 					// strips (several frames side by side, like the battalion icons) are cut to their first frame by the helper
-					if (nm && tx && typeof nm.v === 'string' && typeof tx.v === 'string') into.set(nm.v.toLowerCase(), { root, file: tx.v, frames: fr && typeof fr.v === 'string' ? Math.max(1, parseInt(fr.v, 10) || 1) : 1 });
+					if (nm && tx && typeof nm.v === 'string' && typeof tx.v === 'string') into.set(nm.v.toLowerCase(), { name: nm.v, root, file: tx.v, frames: fr && typeof fr.v === 'string' ? Math.max(1, parseInt(fr.v, 10) || 1) : 1 });
 				});
 			});
 		}
@@ -44,6 +44,7 @@
 			await FB.server.post('open', { path: game });
 			await scan(FB.server.dir(game, 'game'), game, map, false);
 			if (FB.ws.active && FB.ws.serverMode && FB.ws.path) await scan(FB.ws.dir, FB.ws.path, map, true);
+			G.sprites.forEach((v, k) => { if (v.local && !map.has(k)) map.set(k, v); });
 			G.sprites = map; G.count = map.size; G.error = '';
 			if (cache.size) cache.clear();
 		} catch (e) { G.error = e.message || String(e); } finally { G.loading = false; }
@@ -66,6 +67,7 @@
 	function fetchUrl(name) {
 		if (cache.has(name)) return cache.get(name);
 		const s = G.sprites.get(name);
+		if (s && s.local) { const p = Promise.resolve(s.data); cache.set(name, p); return p; }
 		let p = Promise.resolve(null);
 		if (s) {
 			// a mod texture wins when it exists, otherwise the game's copy of the same path is used
@@ -80,6 +82,13 @@
 		cache.set(name, p);
 		return p;
 	}
+
+	/** A picture that exists only in the app so far (a new focus icon that is saved into the mod later). */
+	G.addLocal = function (name, dataUrl) {
+		const k = String(name).toLowerCase();
+		G.sprites.set(k, { name, local: true, data: dataUrl, root: '', file: '' });
+		cache.delete(k); icMem.set(k, dataUrl); G.ready = true;
+	};
 
 	/** Loads the sprite lists and redraws the focus tree so it shows the focus pictures. */
 	G.loadIcons = function () { return G.load().then((ok) => { if (ok && FB.canvas) FB.canvas.render(); return ok; }).catch(() => false); };

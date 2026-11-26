@@ -297,7 +297,9 @@
 		vp.addEventListener('keydown', onKey);
 		window.addEventListener('pointerdown', (e) => { if (ctxMenu && !ctxMenu.contains(e.target)) hideMenu(); }, true);
 		vp.addEventListener('dblclick', (e) => {
-			if (nodeFromEvent(e) || !FB.dev.on) return;
+			const hit = nodeFromEvent(e);
+			if (hit) { if (FB.ui.setFull) { FB.select(hit); FB.ui.setFull(true); } return; }
+			if (!FB.dev.on) return;
 			const w = toWorld(e.clientX, e.clientY), c = toCell(w.x, w.y);
 			FB.addFocus({ x: c.x, y: c.y }); FB.commit('add', { full: true });
 		});
