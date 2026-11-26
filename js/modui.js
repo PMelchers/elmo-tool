@@ -15,6 +15,72 @@
 	const recents = () => { try { return JSON.parse(localStorage.getItem(RECENT_KEY) || '[]'); } catch (e) { return []; } };
 	const remember = (name, path) => { try { localStorage.setItem(RECENT_KEY, JSON.stringify([{ name, path }].concat(recents().filter((r) => r.path !== path)).slice(0, 5))); } catch (e) { /* storage unavailable */ } };
 
+	/* ---------- clear explanations when a folder cannot be opened ---------- */
+	const WORKSHOP_HINT = 'Steam workshop mods are in Steam\\steamapps\\workshop\\content\\394360\\<number of the mod>.';
+	function copyBtn(text) {
+		return h('button', { class: 'btn small', onclick: () => (navigator.clipboard ? navigator.clipboard.writeText(text) : Promise.reject()).then(() => FB.toast('Details copied. Paste them to whoever helps you.', 'ok'), () => FB.toast(text)) }, FB.icon('copy', 13), 'Copy details');
+	}
+	function modButton(c, close) {
+		return h('button', { class: 'mod-row', onclick: () => { close(); loadPath(c.path, c.name); } },
+			h('span', { class: 'mr-name' }, c.name), c.trees ? h('span', { class: 'badge' }, c.trees + ' focus files') : h('span', { class: 'badge' }, 'no focus trees'), h('span', { class: 'mr-path' }, c.path));
+	}
+	/** Asks the helper what is in the folder and says in plain words what is wrong and what to do. */
+	async function explainFailure(path, err) {
+		const msg = String((err && err.message) || err || '');
+		let d = null;
+		try { d = await FB.server.post('diagnose', { path }); } catch (e) { d = null; }
+		let title = 'This folder cannot be opened';
+		const body = [];
+		const p = (...k) => body.push(h('p', {}, ...k));
+		let close = () => {};
+		const list = (items) => body.push(h('div', { class: 'mod-list' }, items.map((c) => modButton(c, () => close()))));
+		if (!d) {
+			p(msg || 'The helper did not answer.');
+			p('The helper (the small program that reads mod folders) may have stopped. Close Elmo tool and start it again with "Elmo tool.bat".');
+		} else if (!d.exists) {
+			title = 'Folder not found';
+			p('There is no folder at ', h('code', {}, path || '(empty)'), '.');
+			p(d.parentExists ? 'The folder above it exists, so the last part of the path is probably misspelled.' : 'Check the path: copy it from the address bar of Windows Explorer.');
+			p(h('span', { class: 'muted' }, WORKSHOP_HINT));
+		} else if (d.kind === 'file' && /\.(zip|rar|7z)$/.test(d.ext || '')) {
+			title = 'This is a zip file, not a folder';
+			p('Unzip it first: right-click the file → ', h('b', {}, 'Extract All…'), ', then open the folder that comes out (the one with ', h('code', {}, 'descriptor.mod'), ' in it).');
+		} else if (d.kind === 'file' && d.ext === '.mod') {
+			title = 'This is a launcher file (.mod)';
+			if (d.modTargetExists) { p('It points to the mod folder below. Open that one:'); list([{ name: path.split(/[\\/]/).pop().replace(/\.mod$/i, ''), path: d.modTarget, trees: 0 }]); }
+			else p('It points to ', h('code', {}, d.modTarget || '(nothing)'), ', which does not exist. The mod may not be downloaded (Steam: subscribe and let it finish) or was moved.');
+		} else if (d.kind === 'file') {
+			title = 'This is a file, not a folder';
+			p('Choose the mod folder itself: the folder that holds ', h('code', {}, 'descriptor.mod'), ' and ', h('code', {}, 'common'), '.');
+		} else if (d.denied) {
+			title = 'Windows does not allow reading this folder';
+			p('Your Windows account has no permission to open ', h('code', {}, path), '.');
+			p('Copy the mod folder to Documents and open the copy, or start Elmo tool once as administrator.');
+		} else if (d.insideMod) {
+			title = 'You picked a folder inside the mod';
+			p('Open the mod itself instead, not one of its sub folders:');
+			list([d.insideMod]);
+		} else if (d.candidates && d.candidates.length) {
+			title = d.candidates.length === 1 ? 'The mod is one folder deeper' : 'This folder holds ' + d.candidates.length + ' mods';
+			p(d.candidates.length === 1 ? 'Open this one:' : 'Pick the mod you want:');
+			list(d.candidates);
+		} else if (d.hasDescriptor && !d.focusFiles && !d.hasMio) {
+			title = 'This mod has no focus trees';
+			p('The mod is there, but it has no ', h('code', {}, 'common\\national_focus'), ' (and no MIOs), so Elmo tool has nothing to edit in it.');
+			p('Is it a submod or a small patch? Then open the main mod it builds on.');
+		} else if (d.zips && d.zips.length) {
+			title = 'The mod is still zipped';
+			p('This folder only has ', h('code', {}, d.zips.join(', ')), '. Unzip it (right-click → Extract All…) and open the extracted folder.');
+		} else {
+			title = 'No mod found in this folder';
+			p('A mod folder has a ', h('code', {}, 'descriptor.mod'), ' file and a ', h('code', {}, 'common'), ' folder with ', h('code', {}, 'national_focus'), ' in it. This folder has neither.');
+			p(h('span', { class: 'muted' }, WORKSHOP_HINT));
+		}
+		const details = 'Elmo tool could not open a mod folder\nPath: ' + path + '\nError: ' + msg + '\nFound: ' + JSON.stringify(d || {}, null, 1);
+		body.push(h('div', { class: 'btn-row' }, copyBtn(details), h('button', { class: 'btn', onclick: () => { close(); openChooser(); } }, 'Choose another folder')));
+		close = FB.ui.modal(title, h('div', { class: 'explain' }, body));
+	}
+
 	/** Opens a mod folder by path through the helper. */
 	async function loadPath(path, label) {
 		try {
@@ -28,7 +94,7 @@
 				if (/workshop[\\/]content/i.test(path)) FB.toast('Steam workshop folder: Steam may overwrite your changes when the mod updates.', 'warn');
 				FB.ui.setLeftTab('focuses');
 			}
-		} catch (e) { setStatus(''); FB.toast(String((e && e.message) || e), 'warn'); }
+		} catch (e) { setStatus(''); explainFailure(path, e); }
 		renderWsBar();
 	}
 
@@ -67,7 +133,8 @@
 			search, list,
 			h('div', { class: 'sub-title' }, 'Somewhere else'),
 			h('div', { class: 'btn-row' }, browse),
-			h('div', { class: 'ws-pick' }, pathIn, h('button', { class: 'btn', onclick: () => { if (pathIn.value.trim()) go(pathIn.value.trim().replace(/^"|"$/g, '')); } }, 'Open'))), { wide: true });
+			h('div', { class: 'ws-pick' }, pathIn, h('button', { class: 'btn', onclick: () => { if (pathIn.value.trim()) go(pathIn.value.trim().replace(/^"|"$/g, '')); } }, 'Open')),
+			h('p', { class: 'muted small' }, 'Not in the list? Use Browse or paste the path of the folder that has descriptor.mod in it. If it still fails, Elmo tool tells you why.')), { wide: true });
 		draw();
 		FB.server.json('mods').then((r) => { mods = r.mods; draw(); }).catch((e) => { list.innerHTML = ''; list.appendChild(h('div', { class: 'muted' }, /fetch/i.test(e.message) ? 'The helper is no longer running. Close this window and start Focus Builder again from its shortcut.' : 'Could not look for mods: ' + e.message)); });
 	}
@@ -87,7 +154,9 @@
 			setStatus('');
 			if (e && e.name !== 'AbortError') {
 				const msg = String((e && e.message) || e);
-				if (/system files|SecurityError/i.test(msg + (e.name || ''))) FB.ui.modal('This folder is blocked by the browser', h('div', {}, h('p', {}, 'Chrome and Edge do not allow folders under Program Files (including the Steam workshop folder) to be opened for editing.'), h('p', {}, h('b', {}, 'Fix: '), 'copy the mod folders ', h('code', {}, 'common'), ' and ', h('code', {}, 'localisation'), ' folders (and descriptor.mod) to a normal folder such as Documents, then open that copy.'), h('p', { class: 'muted' }, 'Steam also overwrites workshop mods when they update, so edit a copy anyway.')));
+				const helperTip = h('p', {}, h('b', {}, 'Easiest fix: '), 'install Python from python.org (tick "Add python.exe to PATH") and start Elmo tool with ', h('code', {}, 'Elmo tool.bat'), '. Its helper can open every folder, also the Steam workshop, and finds your mods by itself.');
+				if (/system files|SecurityError/i.test(msg + (e.name || ''))) FB.ui.modal('This folder is blocked by the browser', h('div', { class: 'explain' }, h('p', {}, 'Elmo tool is running without its helper, and Chrome / Edge do not allow folders under Program Files (such as the Steam workshop folder) to be opened.'), helperTip, h('p', {}, h('b', {}, 'Or: '), 'copy the mod folder to Documents and open the copy.')));
+				else if (/national_focus|descriptor\.mod|military_industrial/i.test(msg)) FB.ui.modal('No mod found in this folder', h('div', { class: 'explain' }, h('p', {}, 'Choose the mod folder itself: the one with ', h('code', {}, 'descriptor.mod'), ' and a ', h('code', {}, 'common'), ' folder in it. Not a folder above it (like the workshop folder full of numbers) and not one inside it (like common).'), helperTip));
 				else FB.toast(msg, 'warn');
 			}
 		}

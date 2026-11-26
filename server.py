@@ -158,10 +158,105 @@ def read_descriptor_name(folder):
 
 def count_focus_files(folder):
     d = os.path.join(folder, 'common', 'national_focus')
+    n = 0
     try:
-        return sum(1 for n in os.listdir(d) if n.lower().endswith('.txt'))
+        for root, dirs, files in os.walk(d):
+            if root[len(d):].count(os.sep) >= 4:
+                dirs[:] = []
+            n += sum(1 for f in files if f.lower().endswith('.txt'))
     except OSError:
         return 0
+    return n
+
+
+def mod_file_path(modfile):
+    """The folder a launcher .mod file points at (path= can be relative to the HOI4 user folder)."""
+    try:
+        txt = pathlib.Path(modfile).read_text(encoding='utf-8-sig', errors='replace')
+    except OSError:
+        return ''
+    m = re.search(r'^\s*path\s*=\s*"(.*?)"', txt, re.M)
+    if not m:
+        return ''
+    target = m.group(1).replace('/', os.sep)
+    if not os.path.isabs(target):
+        target = os.path.join(os.path.dirname(os.path.dirname(modfile)), target)
+    return os.path.normpath(target)
+
+
+def diagnose(path):
+    """Explains why a folder cannot be opened as a mod, and finds the mod folders inside it."""
+    p = (path or '').strip().strip('"')
+    out = {'path': p, 'exists': os.path.exists(p)}
+    if not p or not out['exists']:
+        parent = os.path.dirname(p.rstrip('\\/'))
+        out['parentExists'] = bool(parent) and os.path.isdir(parent)
+        return out
+    if os.path.isfile(p):
+        ext = os.path.splitext(p)[1].lower()
+        out.update(kind='file', ext=ext)
+        if ext == '.mod':
+            t = mod_file_path(p)
+            out['modTarget'] = t
+            out['modTargetExists'] = bool(t) and os.path.isdir(t)
+        return out
+    out['kind'] = 'dir'
+    try:
+        names = os.listdir(p)
+    except PermissionError:
+        out['denied'] = True
+        return out
+    except OSError as e:
+        out['error'] = str(e)
+        return out
+    low = {n.lower(): n for n in names}
+    out['hasDescriptor'] = 'descriptor.mod' in low
+    out['hasCommon'] = os.path.isdir(os.path.join(p, 'common'))
+    out['focusFiles'] = count_focus_files(p)
+    out['hasMio'] = os.path.isdir(os.path.join(p, 'common', 'military_industrial_organization', 'organizations'))
+    out['zips'] = [n for n in names if n.lower().endswith(('.zip', '.rar', '.7z'))][:5]
+    cands, seen = [], set()
+
+    def add(folder, label=None):
+        k = os.path.normcase(os.path.realpath(folder))
+        if k in seen or not os.path.isdir(folder):
+            return
+        f = count_focus_files(folder)
+        has_desc = os.path.isfile(os.path.join(folder, 'descriptor.mod'))
+        if not f and not has_desc:
+            return
+        seen.add(k)
+        cands.append({'name': read_descriptor_name(folder) or label or os.path.basename(folder), 'path': os.path.realpath(folder), 'trees': f})
+
+    for n in sorted(names)[:600]:
+        full = os.path.join(p, n)
+        if os.path.isdir(full):
+            add(full)
+            # an unzipped mod often sits one folder deeper (bffu2/bffu2/common)
+            try:
+                for m in os.listdir(full)[:50]:
+                    if os.path.isdir(os.path.join(full, m, 'common')):
+                        add(os.path.join(full, m))
+            except OSError:
+                pass
+        elif n.lower().endswith('.mod') and n.lower() != 'descriptor.mod':
+            t = mod_file_path(full)
+            if t:
+                add(t, os.path.splitext(n)[0])
+    cands.sort(key=lambda c: (-c['trees'], c['name'].lower()))
+    out['candidates'] = cands[:40]
+    # a folder inside a mod (common, national_focus, ...): point at the mod root above it
+    up = p
+    for _ in range(4):
+        parent = os.path.dirname(up.rstrip('/' + os.sep))
+        if not parent or parent == up:
+            break
+        if os.path.isfile(os.path.join(parent, 'descriptor.mod')) or count_focus_files(parent):
+            if not out['focusFiles'] and not out['hasDescriptor']:
+                out['insideMod'] = {'name': read_descriptor_name(parent) or os.path.basename(parent), 'path': os.path.realpath(parent), 'trees': count_focus_files(parent)}
+            break
+        up = parent
+    return out
 
 
 def steam_libraries():
@@ -274,13 +369,9 @@ def find_mods():
             if entry.is_dir():
                 add(str(entry), 'local')
             elif entry.suffix.lower() == '.mod':       # launcher entries that point to a folder elsewhere
-                try:
-                    txt = entry.read_text(encoding='utf-8-sig', errors='replace')
-                    m = re.search(r'^\s*path\s*=\s*"(.*?)"', txt, re.M)
-                    if m:
-                        add(m.group(1).replace('/', os.sep), 'local')
-                except OSError:
-                    pass
+                t = mod_file_path(str(entry))
+                if t:
+                    add(t, 'local', entry.stem)
     for lib in steam_libraries():
         ws = os.path.join(lib, 'steamapps', 'workshop', 'content', '394360')
         if os.path.isdir(ws):
@@ -405,6 +496,8 @@ class Handler(http.server.BaseHTTPRequestHandler):
             return None
         if name == 'mods':
             return self.send_json({'mods': find_mods()})
+        if name == 'diagnose' and method == 'POST':
+            return self.send_json(diagnose(json.loads(self.body() or b'{}').get('path') or ''))
         if name == 'browse':
             return self.send_json({'path': browse_dialog(q.get('initial'))})
         if name == 'open':

@@ -307,3 +307,6 @@ body[data-mode]:not([data-mode=trees]) #topbar .tb-group, body[data-mode]:not([d
 .gd-stepic .gd-pic { max-width: 46px; max-height: 42px; object-fit: contain; }
 @media (max-width: 1100px) { .gd-dz { grid-template-columns: 1fr; } }
 .gd-bp { max-width: 360px; } .gd-dzl { max-width: 360px; }
+.explain { max-width: 620px; display: flex; flex-direction: column; gap: 10px; }
+.explain p { margin: 0; line-height: 1.5; }
+.explain .mod-list { max-height: 320px; overflow: auto; }
