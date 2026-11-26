@@ -120,7 +120,22 @@
 		if (FB.gfx && FB.gfx.ready) FB.gfx.attach(el, [f.icon || (proj && proj.meta.defaultIcon) || 'GFX_goal_unknown']);
 		return el;
 	}
-	const stepOf = (f, tree) => ({ type: 'focus', id: f.id, name: f.name, weeks: f.weeks, tree, note: '' });
+	const stepOf = (f, tree) => { const icon = f.icon || 'GFX_goal_unknown'; if (FB.gfx) FB.gfx.keep(icon); return { type: 'focus', id: f.id, name: f.name, weeks: f.weeks, tree, note: '', icon }; };
+	/** Sprite of a focus step: stored with the step, else looked up in the guide's tree. */
+	function stepIcon(s) {
+		if (s.icon) return s.icon;
+		const p = G.treeKey ? projectFor(G.treeKey) : null;
+		const f = p && p.focuses.find((x) => x.id === s.id);
+		return f ? f.icon || p.meta.defaultIcon || 'GFX_goal_unknown' : null;
+	}
+	/** Every sprite a guide shows (to bundle with exports and shared files). */
+	function iconNames(g) {
+		const out = [];
+		g.focus.forEach((s) => { if (s.type === 'focus') out.push(stepIcon(s)); });
+		g.tanks.concat(g.ships).forEach((d) => (d.modules || []).forEach((m) => out.push(m.icon)));
+		g.templates.forEach((t) => (t.rows || []).flat().concat(t.support || []).forEach((c) => c && out.push(c.icon)));
+		return out.filter(Boolean);
+	}
 
 	/* ---------- rendering ---------- */
 	function render() {
@@ -225,8 +240,14 @@
 	const blobToData = (b) => new Promise((res) => { const r = new FileReader(); r.onload = () => res(r.result); r.onerror = () => res(null); r.readAsDataURL(b); });
 	async function imagesData(g) { const out = {}; for (const im of g.images || []) { const b = await imgGet(im.id); if (b) out[im.id] = await blobToData(b); } return out; }
 	/** A copy of the guide with every picture inside it, for the .json file. */
-	async function withImageData(g) { const d = await imagesData(g); return Object.assign({}, g, { images: (g.images || []).map((im) => Object.assign({}, im, { data: d[im.id] || null })) }); }
+	async function withImageData(g) {
+		const d = await imagesData(g);
+		const icons = FB.gfx ? await FB.gfx.collect(iconNames(g)) : {};
+		return Object.assign({}, g, { images: (g.images || []).map((im) => Object.assign({}, im, { data: d[im.id] || null })), icons });
+	}
 	async function storeImported(g) {
+		if (g.icons && FB.gfx) await FB.gfx.store(g.icons);   // the game pictures that came with the guide
+		delete g.icons;
 		for (const im of g.images) {
 			if (im && im.data) { try { const b = await (await fetch(im.data)).blob(); im.id = 'img' + FB.uid(); await imgPut(im.id, b); } catch (e) { /* keep the title, the picture is lost */ } }
 			if (im) delete im.data;
@@ -319,7 +340,7 @@
 				return;
 			}
 			n++;
-			order.appendChild(h('div', { class: 'gd-step' }, h('span', { class: 'gd-num' }, n),
+			order.appendChild(h('div', { class: 'gd-step' }, h('span', { class: 'gd-num' }, n), h('span', { class: 'gd-stepic' }, FB.gfx ? FB.gfx.picture(stepIcon(s)) : null),
 				h('div', { class: 'gd-stepb' },
 					h('div', { class: 'gd-steph' }, h('input', { type: 'text', value: s.name, oninput: (e) => { s.name = e.target.value; save(g); } }), h('span', { class: 'gd-weeks' }, FB.icon('clock', 13), (s.weeks || 0) + ' wk'), rowTools(g.focus, i, g)),
 					noteBox(s, g, 'Why this focus now? (optional)'))));
@@ -344,17 +365,38 @@
 		pane.appendChild(bar);
 		pane.appendChild(h('p', { class: 'muted small' }, 'Designs come from the Designer tab. Save a design there with the save button, then add it here. The guide keeps its own copy, so changing the design later does not change the guide.'));
 		if (!arr.length) pane.appendChild(h('div', { class: 'tp-empty' }, 'No ' + kind + ' designs in this guide yet.'));
-		arr.forEach((s, i) => pane.appendChild(h('div', { class: 'gd-card' },
-			h('div', { class: 'gd-cardh' }, h('input', { type: 'text', value: s.name, oninput: (e) => { s.name = e.target.value; save(g); } }), h('small', {}, [s.family, s.variantLabel].filter(Boolean).join(' · ')), rowTools(arr, i, g)),
-			h('div', { class: 'gd-design' },
-				s.svg ? h('div', { class: 'gd-svg', html: s.svg }) : null,
-				h('table', { class: 'gd-mods' }, s.modules.filter((m) => m.name).map((m) => h('tr', {}, h('td', {}, m.slot), h('td', {}, m.name + (m.tier ? ' ' + m.tier : '')))))),
-			noteBox(s, g, 'When and why to use this design…'))));
+		arr.forEach((s, i) => {
+			const live = saved.find((d) => d.id === s.id);
+			const refresh = live ? h('button', { class: 'ibtn', title: 'Update from the Designer (pictures, stats and modules as they are now)', onclick: async () => {
+				try { if (!FB.designer.hasData()) await FB.designer.ensure(); } catch (e) { /* keep what we can */ }
+				arr[i] = Object.assign(FB.designer.snapshot(live), { note: s.note || '', name: s.name }); save(g); render();
+			} }, FB.icon('undo', 14)) : null;
+			pane.appendChild(h('div', { class: 'gd-card gd-dcard' },
+				h('div', { class: 'gd-cardh' }, h('input', { type: 'text', value: s.name, oninput: (e) => { s.name = e.target.value; save(g); } }), h('small', {}, [s.family, s.variantLabel].filter(Boolean).join(' · ')), refresh, rowTools(arr, i, g)),
+				designView(s),
+				noteBox(s, g, 'When and why to use this design…')));
+		});
 	}
 
 	/* ---------- tab: templates ---------- */
+	/** A design as in the Designer: blueprint, module tiles with the game's pictures, clicks and the main stats. */
+	function designView(s) {
+		const mods = (s.modules || []).map((m) => h('div', { class: 'gd-mod' + (m.name ? '' : ' empty'), title: m.slot + ': ' + (m.name || 'empty') },
+			h('div', { class: 'gd-modpic' }, m.icon && FB.gfx ? FB.gfx.picture(m.icon) : null, h('span', { class: 'gd-modalt' }, m.name ? (m.tier || '•') : '')),
+			h('b', {}, m.name || 'Empty'), h('small', {}, m.slot)));
+		const dials = s.dials ? Object.entries(s.dials).filter((x) => typeof x[1] === 'number') : [];
+		return h('div', { class: 'gd-dz' },
+			h('div', { class: 'gd-dzl' },
+				s.svg ? h('div', { class: 'gd-bp', html: s.svg }) : null,
+				dials.length ? h('div', { class: 'gd-clicks' }, dials.map(([k, v]) => h('span', {}, k + ' ', h('b', {}, v), ' clicks'))) : null,
+				s.cost ? h('div', { class: 'gd-cost' }, 'Production cost ', h('b', {}, s.cost + ' IC')) : null),
+			h('div', { class: 'gd-dzr' },
+				h('div', { class: 'gd-mods2' }, mods),
+				s.stats && s.stats.length ? h('div', { class: 'gd-stats' }, s.stats.map((x) => h('div', {}, h('span', {}, x.label), h('b', {}, x.value)))) : null));
+	}
 	function templateGrid(snap) {
-		const cell = (c) => h('span', { class: 'gd-tc' + (c ? ' on' : ''), style: c ? { '--gc': FB.templates.unitColor(c.group) } : {}, title: c ? c.name : '' }, c ? c.abbr : '');
+		const cell = (c) => h('span', { class: 'gd-tc' + (c ? ' on' : ''), style: c ? { '--gc': FB.templates.unitColor(c.group) } : {}, title: c ? c.name : '' },
+			c && c.icon && FB.gfx ? FB.gfx.picture(c.icon) : null, h('i', {}, c ? c.abbr : ''));
 		return h('div', { class: 'gd-tgrid' },
 			h('div', { class: 'gd-trows' }, snap.rows.map((r) => h('div', { class: 'gd-trow' }, r.map(cell)))),
 			h('div', { class: 'gd-tsup' }, h('small', {}, 'Support'), h('div', { class: 'gd-trow' }, snap.support.map(cell))));
@@ -367,7 +409,9 @@
 			h('button', { class: 'dzf-btn', onclick: () => FB.modes.set('templates') }, FB.icon('users', 14), 'Open Templates')));
 		if (!g.templates.length) pane.appendChild(h('div', { class: 'tp-empty' }, 'No division templates in this guide yet.'));
 		g.templates.forEach((s, i) => pane.appendChild(h('div', { class: 'gd-card' },
-			h('div', { class: 'gd-cardh' }, h('input', { type: 'text', value: s.name, oninput: (e) => { s.name = e.target.value; save(g); } }), h('small', {}, s.battalions + ' battalions · ' + s.supportCount + ' support'), rowTools(g.templates, i, g)),
+			h('div', { class: 'gd-cardh' }, h('input', { type: 'text', value: s.name, oninput: (e) => { s.name = e.target.value; save(g); } }), h('small', {}, s.battalions + ' battalions · ' + s.supportCount + ' support'),
+				FB.templates.byId(s.id) ? h('button', { class: 'ibtn', title: 'Update from Templates (pictures and layout as they are now)', onclick: () => { g.templates[i] = Object.assign(FB.templates.snapshot(FB.templates.byId(s.id)), { note: s.note || '', name: s.name }); save(g); render(); } }, FB.icon('undo', 14)) : null,
+				rowTools(g.templates, i, g)),
 			templateGrid(s), h('p', { class: 'muted small' }, s.summary),
 			noteBox(s, g, 'When to use this template…'))));
 	}
@@ -498,15 +542,20 @@
 	}
 
 	/** data: picture id -> data URL, so the page carries its own pictures. */
-	function toHtml(g, data) {
+	function toHtml(g, data, icons) {
+		icons = icons || {};
+		const pic = (n, cls) => (n && icons[String(n).toLowerCase()] ? '<img class="' + (cls || 'pic') + '" src="' + icons[String(n).toLowerCase()] + '" alt="">' : '');
 		data = data || {};
-		const cell = (c) => '<span class="c' + (c ? ' on' : '') + '"' + (c ? ' style="--gc:' + FB.templates.unitColor(c.group) + '" title="' + esc(c.name) + '"' : '') + '>' + (c ? esc(c.abbr) : '') + '</span>';
+		const cell = (c) => '<span class="c' + (c ? ' on' : '') + (c && pic(c.icon) ? ' img' : '') + '"' + (c ? ' style="--gc:' + FB.templates.unitColor(c.group) + '" title="' + esc(c.name) + '"' : '') + '>' + (c ? (pic(c.icon) || esc(c.abbr)) : '') + '</span>';
 		let n = 0;
-		const focus = g.focus.map((s) => s.type === 'heading' ? '<h3>' + esc(s.name) + '</h3>' : '<div class="step"><span class="n">' + (++n) + '</span><div><b>' + esc(s.name) + '</b> <small>' + s.weeks + ' weeks</small>' + (s.note ? '<p>' + esc(s.note) + '</p>' : '') + '</div></div>').join('\n');
+		const focus = g.focus.map((s) => s.type === 'heading' ? '<h3>' + esc(s.name) + '</h3>' : '<div class="step"><span class="n">' + (++n) + '</span>' + pic(stepIcon(s), 'fi') + '<div><b>' + esc(s.name) + '</b> <small>' + s.weeks + ' weeks</small>' + (s.note ? '<p>' + esc(s.note) + '</p>' : '') + '</div></div>').join('\n');
 		const design = (s) => '<div class="card"><h3>' + esc(s.name) + '</h3><small>' + esc([s.family, s.variantLabel].filter(Boolean).join(' · ')) + '</small><div class="dz">' + (s.svg ? '<div class="svg">' + s.svg + '</div>' : '') +
-			'<table>' + s.modules.filter((m) => m.name).map((m) => '<tr><td>' + esc(m.slot) + '</td><td>' + esc(m.name + (m.tier ? ' ' + m.tier : '')) + '</td></tr>').join('') + '</table></div>' + (s.note ? '<p>' + esc(s.note) + '</p>' : '') + '</div>';
+			'<div class="mods">' + s.modules.map((m) => '<div class="mod' + (m.name ? '' : ' empty') + '"><div class="mp">' + (pic(m.icon) || (m.name ? '<span>' + esc(m.tier || '•') + '</span>' : '')) + '</div><b>' + esc(m.name || 'Empty') + '</b><small>' + esc(m.slot) + '</small></div>').join('') + '</div></div>' +
+			(s.dials && Object.keys(s.dials).length ? '<p class="clk">' + Object.entries(s.dials).filter((x) => typeof x[1] === 'number').map(([k, v]) => esc(k) + ' <b>' + v + '</b> clicks').join(' · ') + (s.cost ? ' · cost <b>' + s.cost + ' IC</b>' : '') + '</p>' : '') +
+			(s.stats && s.stats.length ? '<div class="st">' + s.stats.map((x) => '<div><span>' + esc(x.label) + '</span><b>' + esc(x.value) + '</b></div>').join('') + '</div>' : '') +
+			(s.note ? '<p>' + esc(s.note) + '</p>' : '') + '</div>';
 		const tpl = (s) => '<div class="card"><h3>' + esc(s.name) + '</h3><div class="tg">' + s.rows.map((r) => '<div>' + r.map(cell).join('') + '</div>').join('') + '<div class="sup">Support ' + s.support.map(cell).join('') + '</div></div><small>' + esc(s.summary) + '</small>' + (s.note ? '<p>' + esc(s.note) + '</p>' : '') + '</div>';
-		const css = 'body{background:#14181c;color:#dde5ec;font:16px/1.55 Segoe UI,Arial,sans-serif;margin:0}main{max-width:900px;margin:0 auto;padding:30px 20px}h1{font:600 32px Georgia,serif;color:#eadfc2;margin:0}h2{font:600 22px Georgia,serif;color:#d8c27a;border-bottom:1px solid #3a444e;padding-bottom:4px;margin-top:34px}h3{color:#eadfc2;margin:.8em 0 .3em}.lead{color:#98a5b1}.card{background:#1d2329;border:1px solid #3a444e;border-radius:6px;padding:12px 16px;margin:12px 0}.step{display:flex;gap:12px;margin:8px 0}.n{flex:none;width:28px;height:28px;border-radius:50%;background:#d8c27a;color:#1a1608;font-weight:700;display:flex;align-items:center;justify-content:center}.step p,.card p{margin:.3em 0;color:#b5c0ca}small{color:#8d99a5}.dz{display:flex;gap:18px;align-items:flex-start;flex-wrap:wrap}.svg{width:260px;max-width:100%}.svg svg{width:100%;height:auto}table{border-collapse:collapse}td{padding:2px 12px 2px 0;border-bottom:1px solid #2c353d}td:first-child{color:#98a5b1}.tg div{display:flex;gap:4px;margin:4px 0}.c{width:44px;height:30px;border:1px solid #3a444e;border-radius:3px;display:inline-flex;align-items:center;justify-content:center;font-size:11px;color:#6d7a86}.c.on{background:color-mix(in srgb,var(--gc) 35%,#1d2329);border-color:var(--gc);color:#fff}.sup{margin-top:10px;align-items:center;color:#98a5b1}ul{padding-left:22px}figure{margin:18px 0}figure img{display:block;max-width:100%;height:auto;border-radius:6px;border:1px solid #3a444e}figcaption{margin-top:6px;color:#98a5b1;font-size:14px}figcaption b{color:#dde5ec}';
+		const css = 'body{background:#14181c;color:#dde5ec;font:16px/1.55 Segoe UI,Arial,sans-serif;margin:0}main{max-width:900px;margin:0 auto;padding:30px 20px}h1{font:600 32px Georgia,serif;color:#eadfc2;margin:0}h2{font:600 22px Georgia,serif;color:#d8c27a;border-bottom:1px solid #3a444e;padding-bottom:4px;margin-top:34px}h3{color:#eadfc2;margin:.8em 0 .3em}.lead{color:#98a5b1}.card{background:#1d2329;border:1px solid #3a444e;border-radius:6px;padding:12px 16px;margin:12px 0}.step{display:flex;gap:12px;margin:8px 0}.n{flex:none;width:28px;height:28px;border-radius:50%;background:#d8c27a;color:#1a1608;font-weight:700;display:flex;align-items:center;justify-content:center}.step p,.card p{margin:.3em 0;color:#b5c0ca}small{color:#8d99a5}.dz{display:flex;gap:18px;align-items:flex-start;flex-wrap:wrap}.svg{width:260px;max-width:100%}.svg svg{width:100%;height:auto}table{border-collapse:collapse}td{padding:2px 12px 2px 0;border-bottom:1px solid #2c353d}td:first-child{color:#98a5b1}.tg div{display:flex;gap:4px;margin:4px 0}.c{width:44px;height:30px;border:1px solid #3a444e;border-radius:3px;display:inline-flex;align-items:center;justify-content:center;font-size:11px;color:#6d7a86}.c.on{background:color-mix(in srgb,var(--gc) 35%,#1d2329);border-color:var(--gc);color:#fff}.sup{margin-top:10px;align-items:center;color:#98a5b1}ul{padding-left:22px}.mods{display:grid;grid-template-columns:repeat(auto-fill,minmax(110px,1fr));gap:8px;flex:1;min-width:260px}.mod{background:#14181c;border:1px solid #2c353d;border-radius:6px;padding:6px;text-align:center;display:flex;flex-direction:column;gap:2px}.mod.empty{opacity:.45}.mp{height:46px;display:flex;align-items:center;justify-content:center}.mp img{max-width:100%;max-height:46px}.mp span{color:#d8c27a;font-weight:700}.mod b{font-size:12.5px;font-weight:600}.mod small{font-size:11px}.clk{color:#b5c0ca}.st{display:grid;grid-template-columns:repeat(auto-fill,minmax(170px,1fr));gap:2px 16px;margin-top:8px;font-size:13.5px}.st div{display:flex;justify-content:space-between;border-bottom:1px solid #2c353d;padding:2px 0}.st span{color:#98a5b1}.c.img{width:84px;height:36px;background:#14181c}.c img{max-width:92%;max-height:30px}.fi{width:44px;height:40px;object-fit:contain;flex:none}figure{margin:18px 0}figure img{display:block;max-width:100%;height:auto;border-radius:6px;border:1px solid #3a444e}figcaption{margin-top:6px;color:#98a5b1;font-size:14px}figcaption b{color:#dde5ec}';
 		return '<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>' + esc(g.title) + '</title><style>' + css + '</style></head><body><main><h1>' + esc(g.title) + '</h1>' +
 			(g.tag ? '<div class="lead">' + esc(natLabel(g.tag)) + ' (' + esc(g.tag) + ')</div>' : '') + (g.summary ? '<p class="lead">' + esc(g.summary) + '</p>' : '') +
 			g.text.map((t) => '<h2>' + esc(t.title) + '</h2>' + mdToHtml(t.body)).join('\n') +
@@ -517,7 +566,7 @@
 
 	function exportMenu(anchor, g) {
 		const slug = (g.title || 'guide').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'guide';
-		const items = [['Web page (.html)', 'globe', async () => FB.download(slug + '.html', toHtml(g, await imagesData(g)), 'text/html')], ['Markdown (.md)', 'scroll', () => FB.download(slug + '.md', toMarkdown(g), 'text/markdown')],
+		const items = [['Web page (.html)', 'globe', async () => FB.download(slug + '.html', toHtml(g, await imagesData(g), FB.gfx ? await FB.gfx.collect(iconNames(g)) : {}), 'text/html')], ['Markdown (.md)', 'scroll', () => FB.download(slug + '.md', toMarkdown(g), 'text/markdown')],
 			['Steam / forum BBCode', 'copy', () => { const t = toBBCode(g); (navigator.clipboard ? navigator.clipboard.writeText(t) : Promise.reject()).then(() => FB.toast('BBCode copied. Paste it into the Steam guide editor.', 'ok'), () => FB.download(slug + '.bbcode.txt', t, 'text/plain')); }],
 			['Guide file (.json, to share or back up)', 'download', async () => FB.download(slug + '.guide.json', JSON.stringify(await withImageData(g), null, 2), 'application/json')]];
 		const m = h('div', { class: 'dzf-pop gd-menu' }, items.map(([label, icon, fn]) => h('button', { class: 'dzf-btn', onclick: () => { m.remove(); fn(); } }, FB.icon(icon, 14), label)));

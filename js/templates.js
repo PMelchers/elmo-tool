@@ -206,7 +206,13 @@
 
 	/** Everything a guide needs to show the template without the game data. */
 	function snapshot(t) {
-		const cell = (k) => { const u = unitOf(k); return u ? { name: u.name, abbr: u.abbr, group: u.group, key: u.key } : null; };
+		const cell = (k) => {
+			const u = unitOf(k);
+			if (!u) return null;
+			const icon = FB.gfx && FB.gfx.ready ? FB.gfx.find(unitNames(u)) : null;
+			if (icon) FB.gfx.keep(icon);   // keep the picture for the guide
+			return { name: u.name, abbr: u.abbr, group: u.group, key: u.key, icon };
+		};
 		const s = summary(t);
 		return { id: t.id, name: t.name, notes: t.notes || '', rows: fit(t).grid.slice(0, SZ().rows).map((row) => row.slice(0, SZ().cols).map(cell)), support: t.support.slice(0, SZ().support).map(cell), summary: s.text, battalions: s.bat, supportCount: s.sup };
 	}

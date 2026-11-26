@@ -625,7 +625,12 @@
 		out.variantLabel = variantLabel(v);
 		out.family = group ? group.name : prettyKey(v.archetype);
 		out.nation = v.nation ? natName(v.nation) : '';
-		out.modules = v.slots.map((s) => { const m = dz.sel[s.name] && d.modules[dz.sel[s.name]]; return { slot: shortSlot(s.name), name: m ? (m.custom ? '★ ' : '') + d.name(m.key) : '', tier: m && tierOf(m) ? ROMAN[tierOf(m)] : '' }; });
+		out.modules = v.slots.map((s) => {
+			const m = dz.sel[s.name] && d.modules[dz.sel[s.name]];
+			const icon = m && !m.custom && FB.gfx && FB.gfx.ready ? FB.gfx.find(FB.gfx.moduleNames(m, d.modules)) : null;
+			return { slot: shortSlot(s.name), key: m ? m.key : null, name: m ? (m.custom ? '★ ' : '') + d.name(m.key) : '', tier: m && tierOf(m) ? ROMAN[tierOf(m)] : '', icon };
+		});
+		if (FB.gfx) out.modules.forEach((x) => { if (x.icon) FB.gfx.keep(x.icon); });   // keep the pictures for the guide
 		const spec = SPEC[v.domain] || SPEC.land;
 		out.stats = [].concat(spec.base, spec.combat, spec.misc).filter((k) => r.stats[k] && Math.abs(r.stats[k].value) > 1e-9).map((k) => ({ label: E.statName(k), value: E.fmt(k, r.stats[k].value) }));
 		out.cost = r.stats.build_cost_ic ? +r.stats.build_cost_ic.value.toFixed(2) : 0;

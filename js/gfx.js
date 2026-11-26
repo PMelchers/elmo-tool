@@ -95,4 +95,47 @@
 		fetchUrl(name).then((u) => { if (!u) return; img.onload = () => tile.classList.add('has-img'); img.src = u; tile.appendChild(img); });
 		return true;
 	};
+
+	/* ---------- pictures kept for guides: they must show without the game or the helper, and travel with shared guides ---------- */
+	let icDbP = null;
+	const icMem = new Map();
+	function icDb() {
+		if (!icDbP) icDbP = new Promise((res, rej) => { const q = indexedDB.open('focusbuilder-icons', 1); q.onupgradeneeded = () => q.result.createObjectStore('icon'); q.onsuccess = () => res(q.result); q.onerror = () => rej(q.error); });
+		return icDbP;
+	}
+	async function icGet(n) { try { const db = await icDb(); return await new Promise((res) => { const r = db.transaction('icon').objectStore('icon').get(n); r.onsuccess = () => res(r.result || null); r.onerror = () => res(null); }); } catch (e) { return null; } }
+	async function icPut(n, d) { try { const db = await icDb(); await new Promise((res) => { const t = db.transaction('icon', 'readwrite'); t.objectStore('icon').put(d, n); t.oncomplete = res; t.onerror = res; }); } catch (e) { /* storage unavailable */ } }
+	const toData = (b) => new Promise((res) => { const r = new FileReader(); r.onload = () => res(r.result); r.onerror = () => res(null); r.readAsDataURL(b); });
+	/** The picture of a sprite as a data URL: from the kept copies, else from the game / mod (and then kept). */
+	G.keep = async function (name) {
+		if (!name) return null;
+		const n = String(name).toLowerCase();
+		if (icMem.has(n)) return icMem.get(n);
+		let d = await icGet(n);
+		if (!d && G.ready && G.sprites.has(n)) {
+			const u = await fetchUrl(n);
+			if (u) { try { d = await toData(await (await fetch(u)).blob()); if (d) await icPut(n, d); } catch (e) { d = null; } }
+		}
+		if (d) icMem.set(n, d);
+		return d || null;
+	};
+	/** An <img> that fills in when the picture is known; its parent gets the class has-pic. */
+	G.picture = function (name, cls) {
+		const img = document.createElement('img');
+		img.className = cls || 'gd-pic'; img.alt = ''; img.draggable = false; img.hidden = true;
+		if (name) G.keep(name).then((d) => { if (d) { img.src = d; img.hidden = false; if (img.parentElement) img.parentElement.classList.add('has-pic'); } });
+		return img;
+	};
+	/** {sprite: dataURL} for a list of sprite names (for exports and shared guide files). */
+	G.collect = async function (names) {
+		const out = {};
+		for (const n of new Set((names || []).filter(Boolean).map((x) => String(x).toLowerCase()))) { const d = await G.keep(n); if (d) out[n] = d; }
+		return out;
+	};
+	/** Keeps the pictures that came with an imported guide. */
+	G.store = async function (map) {
+		for (const [n, d] of Object.entries(map || {})) {
+			if (typeof d === 'string' && /^data:image\/(png|webp|jpeg|gif);base64,/.test(d) && d.length < 2e6) { const k = n.toLowerCase(); icMem.set(k, d); await icPut(k, d); }
+		}
+	};
 })(window.FB = window.FB || {});
