@@ -43,8 +43,8 @@ def main():
         shutil.rmtree(p) if os.path.isdir(p) else os.remove(p)
     archive = git(HERE, 'archive', '--format=tar', 'HEAD')
     with tarfile.open(fileobj=io.BytesIO(archive)) as tar:
-        members = [m for m in tar.getmembers() if not m.name.startswith(SKIP) and '..' not in m.name.split('/')]
-        tar.extractall(TARGET, members=members)
+        members = [m for m in tar.getmembers() if not (m.name + '/').startswith(SKIP) and '..' not in m.name.split('/')]
+        tar.extractall(TARGET, members=members, **({'filter': 'data'} if hasattr(tarfile, 'data_filter') else {}))
     git(TARGET, 'add', '-A')
     if not git(TARGET, 'status', '--porcelain').strip():
         print('Nothing changed since the last publish.')

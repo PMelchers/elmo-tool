@@ -14,7 +14,7 @@
 		let ifc;
 		try { ifc = await dirHandle.getDirectoryHandle('interface'); } catch (e) { return; }
 		const files = [];
-		await FB.fsutil.walk(ifc, '', files, 0, (n, base) => /\.gfx$/i.test(n) && (wide || (base === '' && /module|equipmentdesigner|^goals\.gfx$|focus/i.test(n))));
+		await FB.fsutil.walk(ifc, '', files, 0, (n, base) => /\.gfx$/i.test(n) && (wide || (base === '' && /module|equipmentdesigner|^goals\.gfx$|focus|subunit/i.test(n))));
 		for (const f of files) {
 			let text;
 			try { text = await FB.fsutil.readText(f.handle); } catch (e) { continue; }
@@ -23,7 +23,9 @@
 				top.v.forEach((e) => {
 					if (String(e.k).toLowerCase() !== 'spritetype' || !Array.isArray(e.v)) return;
 					const nm = e.v.find((x) => String(x.k).toLowerCase() === 'name'), tx = e.v.find((x) => String(x.k).toLowerCase() === 'texturefile');
-					if (nm && tx && typeof nm.v === 'string' && typeof tx.v === 'string') into.set(nm.v.toLowerCase(), { root, file: tx.v });
+					const fr = e.v.find((x) => String(x.k).toLowerCase() === 'noofframes');
+					// strips (several frames side by side, like the battalion icons) are cut to their first frame by the helper
+					if (nm && tx && typeof nm.v === 'string' && typeof tx.v === 'string') into.set(nm.v.toLowerCase(), { root, file: tx.v, frames: fr && typeof fr.v === 'string' ? Math.max(1, parseInt(fr.v, 10) || 1) : 1 });
 				});
 			});
 		}
@@ -68,10 +70,11 @@
 		if (s) {
 			// a mod texture wins when it exists, otherwise the game's copy of the same path is used
 			const path = winPath(s.root, s.file);
-			p = FB.server.api('img?path=' + encodeURIComponent(path)).then((r) => r.blob()).then((b) => URL.createObjectURL(b)).catch(() => {
+			const fq = s.frames > 1 ? '&frames=' + s.frames : '';
+			p = FB.server.api('img?path=' + encodeURIComponent(path) + fq).then((r) => r.blob()).then((b) => URL.createObjectURL(b)).catch(() => {
 				const game = FB.server.info && FB.server.info.game;
 				if (!game || s.root === game) return null;
-				return FB.server.api('img?path=' + encodeURIComponent(winPath(game, s.file))).then((r) => r.blob()).then((b) => URL.createObjectURL(b)).catch(() => null);
+				return FB.server.api('img?path=' + encodeURIComponent(winPath(game, s.file)) + fq).then((r) => r.blob()).then((b) => URL.createObjectURL(b)).catch(() => null);
 			});
 		}
 		cache.set(name, p);

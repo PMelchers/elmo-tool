@@ -130,8 +130,14 @@
 		setTimeout(() => document.addEventListener('mousedown', outside, true), 0);
 	}
 
-	const tile = (u, size) => h('span', { class: 'dzf-tile tp-tile' + (u ? '' : ' empty'), style: Object.assign({}, size ? { width: size + 'px', height: size + 'px' } : {}, u ? { '--gc': GROUP_COLOR[u.group] || '#8e98a3' } : {}) },
-		u ? FB.icon(unitIcon(u), size ? Math.round(size * 0.5) : 22) : FB.icon('plus', 18), u ? h('i', { class: 'tp-abbr' }, u.abbr) : null);
+	/** The in-game battalion icon (GFX_unit_<key>_icon_medium from the game or mod), over the drawn one. */
+	const unitNames = (u) => ['GFX_unit_' + u.key + '_icon_medium', 'GFX_unit_' + u.key.replace(/_brigade$/, '') + '_icon_medium'];
+	const tile = (u, size) => withGfx(u, h('span', { class: 'dzf-tile tp-tile' + (u ? '' : ' empty'), style: Object.assign({}, size ? { width: size + 'px', height: size + 'px' } : {}, u ? { '--gc': GROUP_COLOR[u.group] || '#8e98a3' } : {}) },
+		u ? FB.icon(unitIcon(u), size ? Math.round(size * 0.5) : 22) : FB.icon('plus', 18), u ? h('i', { class: 'tp-abbr' }, u.abbr) : null));
+	function withGfx(u, el) {
+		if (u && FB.gfx && FB.gfx.ready && FB.gfx.find(unitNames(u))) { el.classList.add('tp-game'); FB.gfx.attach(el, unitNames(u)); }
+		return el;
+	}
 
 	function pickUnit(anchor, kind, onPick) {
 		const list = (kind === 'support' ? T.units.support : T.units.battalions);
@@ -272,7 +278,7 @@
 			root = h('section', { id: 'templates' }, h('div', { id: 'tp-body' }));
 			body = root.firstChild;
 			document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closePop(); });
-			FB.modes.register('templates', 'Templates', 'users', root, { open() { render(); loadUnits(false); }, close() { closePop(); } });
+			FB.modes.register('templates', 'Templates', 'users', root, { open() { render(); loadUnits(false); if (FB.gfx && !FB.gfx.ready && FB.server.active) FB.gfx.load().then((ok) => { if (ok && FB.modes.current === 'templates') render(); }); }, close() { closePop(); } });
 			FB.on('ws', () => { if (FB.modes.current === 'templates') loadUnits(false); });
 		},
 		list: () => T.list.slice(),

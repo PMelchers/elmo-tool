@@ -429,13 +429,22 @@ class Handler(http.server.BaseHTTPRequestHandler):
             ext = os.path.splitext(path)[1].lower()
             if ext not in ('.dds', '.png', '.tga', '.jpg', '.jpeg'):
                 return self.fail(403, 'Only images can be read here')
-            key = (norm(path), os.path.getmtime(path))
+            try:
+                frames = max(1, min(64, int(q.get('frames') or 1)))
+            except ValueError:
+                frames = 1
+            key = (norm(path), os.path.getmtime(path), frames)
             png = IMG_CACHE.get(key)
             if png is None:
                 try:
                     from PIL import Image
                     import io
                     im = open_texture(path)
+                    if frames > 1 and im.width >= frames:   # a strip of frames: keep the first one
+                        im = im.crop((0, 0, im.width // frames, im.height))
+                        box = im.convert('RGBA').getchannel('A').getbbox()   # drop the empty space around the icon
+                        if box:
+                            im = im.crop(box)
                     buf = io.BytesIO()
                     im.convert('RGBA').save(buf, 'PNG')
                     png = buf.getvalue()
