@@ -22,7 +22,20 @@
 			try { localStorage.setItem(STAMP, String(Date.now())); } catch (e) { /* ignore */ }
 		} catch (e) { U.info = { error: e.message }; }
 		showPill();
+		popupOnce();
 		return U.info;
+	}
+
+	/** When an update is ready at start, show it once per start (after any other window, such as Welcome, is closed). */
+	let popped = false;
+	function popupOnce() {
+		if (popped || !U.info || !U.info.available) return;
+		popped = true;
+		let tries = 0;
+		const t = setInterval(() => {
+			const root = document.getElementById('modal-root');
+			if ((root && !root.children.length) || ++tries > 600) { clearInterval(t); openUpdate(); }
+		}, 700);
 	}
 
 	function showPill() {
