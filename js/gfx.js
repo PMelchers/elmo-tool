@@ -14,7 +14,7 @@
 		let ifc;
 		try { ifc = await dirHandle.getDirectoryHandle('interface'); } catch (e) { return; }
 		const files = [];
-		await FB.fsutil.walk(ifc, '', files, 0, (n, base) => /\.gfx$/i.test(n) && (wide || (base === '' && /module|equipmentdesigner|^goals\.gfx$|focus|subunit|idea/i.test(n))));
+		await FB.fsutil.walk(ifc, '', files, 0, (n, base) => /\.gfx$/i.test(n) && (wide || (base === '' && /module|equipmentdesigner|^goals\.gfx$|focus|subunit|idea/i.test(n)) || /^military_industrial_organization\//i.test(base)));   // MIO trait icons live in a subfolder
 		for (const f of files) {
 			let text;
 			try { text = await FB.fsutil.readText(f.handle); } catch (e) { continue; }

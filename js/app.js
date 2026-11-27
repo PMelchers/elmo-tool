@@ -8,7 +8,7 @@
 	let listFilter = '';
 
 	/* ---------- helpers ---------- */
-	const SEC_STYLE = { basics: ['sliders', '#6f9bef'], prereq: ['link', '#c58be8'], avail: ['check', '#e3a24a'], rewards: ['gift', '#6cc08b'], advanced: ['cog', '#8e98a3'], code: ['code', '#8e98a3'] };
+	const SEC_STYLE = { basics: ['sliders', '#6f9bef'], prereq: ['link', '#c58be8'], avail: ['check', '#e3a24a'], rewards: ['gift', '#6cc08b'], advanced: ['cog', '#8e98a3'], code: ['code', '#8e98a3'], spirits: ['bulb', '#e6c75a'] };
 	const section = (key, title, body, badge) => {
 		const st = SEC_STYLE[key] || ['info', '#8e98a3'];
 		const d = h('details', { class: 'sec', open: !!openState[key], style: { '--sc': st[1] } },
@@ -117,11 +117,13 @@
 				h('button', { class: 'btn small', onclick: () => { FB.addFocus({ from: f.uid }); FB.commit('add', { full: true }); } }, '+ Follow-up'),
 				h('button', { class: 'btn small', onclick: () => { FB.duplicateFocus(f.uid); FB.commit('dup', { full: true }); } }, 'Duplicate'),
 				h('button', { class: 'btn small danger', onclick: () => { FB.deleteFocus(f.uid); FB.commit('del', { full: true }); } }, 'Delete')));
+		const spirits = FB.ws.active && FB.spirits ? FB.spirits.focusSection(f) : null;
 		root.append(head,
 			section('basics', 'Basics', basics),
 			section('prereq', 'What it needs first', prereq),
 			section('avail', 'Extra requirements', [availHost], f.available.items.length || null),
 			section('rewards', 'Rewards', rewardHost, f.rewards.length || null),
+			spirits ? section('spirits', 'National spirits', spirits.body, spirits.count) : '',
 			section('advanced', 'Advanced', [advanced, extraBox, note]),
 			section('code', 'HOI4 code for this focus', codeEl));
 		root.scrollTop = scroll;
@@ -449,6 +451,7 @@
 		if (FB.ui.initMod) FB.ui.initMod();
 		if (FB.designer) FB.designer.init();
 		if (FB.templates) FB.templates.init();
+		if (FB.mios) FB.mios.init();
 		if (FB.guides) FB.guides.init();
 		FB.on('devmode', () => { if (FB.ui.refreshMod) FB.ui.refreshMod(true); });
 		FB.on('ws', () => { if (FB.ui.refreshMod) FB.ui.refreshMod(true); renderList(); });

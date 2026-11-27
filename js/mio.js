@@ -123,7 +123,9 @@
 	M.renderProject = function (body) {
 		const m = FB.state.project.meta;
 		body.innerHTML = '';
+		const org = FB.mios && FB.mios.byId(m.treeId);
 		body.append(
+			org ? h('div', { class: 'gd-mio-head', style: { marginBottom: '8px' } }, FB.mios.logo(FB.mios.iconOf(org), 56), h('div', {}, h('b', {}, org.name), h('div', { class: 'muted small' }, org.tags.length ? org.tags.join(', ') : 'Any nation'))) : '',
 			h('div', { class: 'pane-intro' }, 'You are editing a Military Industrial Organization. Each box on the canvas is one trait; drag from the dot under a trait to make another trait depend on it.'),
 			h('label', { class: 'fld' }, h('span', { class: 'fld-l' }, 'Organization id'), h('input', { type: 'text', class: 'mono', value: m.treeId, readonly: true })),
 			h('label', { class: 'fld' }, h('span', { class: 'fld-l' }, 'Organization settings (kept as written)'),

@@ -32,6 +32,7 @@
 		async set(k, v) { try { const db = await idb.open(); await new Promise((res) => { const t = db.transaction('kv', 'readwrite'); t.objectStore('kv').put(v, k); t.oncomplete = res; t.onerror = res; }); } catch (e) { /* private mode */ } }
 	};
 
+	const SPIRITS_KEY = '#spirits'; // the pending-changes group of edited national spirits (not a tree)
 	const ws = FB.ws = {
 		active: false, name: '', dir: null, files: {}, trees: [], loc: {}, locFiles: {}, locIndex: {},
 		current: null, projects: {}, baselines: {}, stats: {}, versions: [], sharedBlocks: 0, lastHandle: null
@@ -64,9 +65,10 @@
 	ws.load = async function (dir, onProgress, opts) {
 		opts = opts || {};
 		const say = (m) => { if (onProgress) onProgress(m); };
-		let nf = null, mioDir = null;
+		let nf = null, mioDir = null, ideasDir = null;
 		try {
 			const common = await dir.getDirectoryHandle('common');
+			try { ideasDir = await common.getDirectoryHandle('ideas'); } catch (e) { ideasDir = null; }
 			try { nf = await common.getDirectoryHandle('national_focus'); } catch (e) { nf = null; }
 			try { mioDir = await (await common.getDirectoryHandle('military_industrial_organization')).getDirectoryHandle('organizations'); } catch (e) { mioDir = null; }
 		} catch (e) { /* no common folder */ }
@@ -93,6 +95,12 @@
 			files[f.path] = { handle: f.handle, text };
 			FB.importer.parseMioFile(text, f.path).forEach((t) => { t.key = f.path + '#' + t.index; trees.push(t); });
 		}
+		const ideaFiles = {};
+		if (ideasDir) {
+			const idf = [];
+			await walk(ideasDir, 'common/ideas/', idf, 0, (n) => /\.txt$/i.test(n));
+			for (const f of idf) { say('Reading national spirits…'); ideaFiles[f.path] = { handle: f.handle, text: await readText(f.handle) }; }
+		}
 		const locFiles = {}, locIndex = {}, loc = {};
 		let locDir = null;
 		try { locDir = await dir.getDirectoryHandle('localisation'); } catch (e) { locDir = null; }
@@ -115,6 +123,7 @@
 		Object.assign(ws, { active: true, name: opts.name || dir.name, dir, files, trees, loc, locFiles, locIndex, current: null, projects: {}, baselines: {}, stats: {}, versions: [], sharedBlocks: shared,
 			serverMode: !!opts.server, path: opts.path || '',
 			backupDir: opts.server && FB.server.info ? FB.server.dir(FB.server.info.backupRoot, 'Focus Builder backups') : null });
+		if (FB.spirits) FB.spirits.load(ws, ideaFiles);
 		if (!opts.server) { idb.set('mod-dir', dir); ws.lastHandle = dir; }
 		FB.emit('ws');
 		const first = trees.find((t) => t.count > 0) || trees[0];
@@ -155,9 +164,11 @@
 			const lines = FB.diff(ws.baselines[t.key], p);
 			if (lines.length) groups.push({ tree: t.id, tag: t.tag, key: t.key, lines });
 		});
+		const sl = FB.spirits ? FB.spirits.changes() : [];
+		if (sl.length) groups.push({ tree: 'National spirits', tag: '', key: SPIRITS_KEY, spirits: true, lines: sl });
 		return groups;
 	};
-	ws.dirtyCount = () => ws.trees.filter((t) => ws.isDirty(t.key)).length;
+	ws.dirtyCount = () => ws.trees.filter((t) => ws.isDirty(t.key)).length + (FB.spirits && FB.spirits.dirtyIds().length ? 1 : 0);
 
 	function setLoc(key, value, treeId) {
 		const ent = ws.locIndex[key];
@@ -258,7 +269,7 @@
 			if (ws.backupDir) await writeText(ws.backupDir, `${safeName}/${stamp}/${path}`, text);
 			else await writeText(ws.dir, `FocusBuilder_backups/${stamp}/${path}`, text);
 		};
-		const keys = groups.map((g) => g.key);
+		const keys = groups.filter((g) => !g.spirits).map((g) => g.key);
 		const byFile = {};
 		keys.forEach((k) => { const t = ws.treeOf(k); (byFile[t.file] = byFile[t.file] || []).push(t); });
 
@@ -287,6 +298,7 @@
 				if (renamed ? !!f.desc : (b.desc || '') !== (f.desc || '')) setLoc(key + '_desc', f.desc, p.meta.treeId);
 			});
 		});
+		if (FB.spirits) await FB.spirits.writeAll(ws, backup, written, setLoc);   // edited national spirits (common/ideas + names)
 		for (const [path, f] of Object.entries(ws.locFiles)) {
 			if (!f.dirty) continue;
 			if (!f.created) await backup(path, f.originalText != null ? f.originalText : f.text);

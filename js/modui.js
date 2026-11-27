@@ -216,7 +216,7 @@
 		const dirty = ws.dirtyCount();
 		const combo = FB.combo({
 			placeholder: 'Search focus trees…', value: cur ? cur.id : '', clear: false, browse: true, limit: 800,
-			items: () => ws.trees.map((t) => ({ label: (ws.isDirty(t.key) ? '● ' : '') + t.id, key: t.id + ' ' + (t.tag || ''), sub: `${t.count} ${t.kind === 'mio' ? 'traits' : 'focuses'}`, cat: t.kind === 'mio' ? 'MIO · ' + (t.tag || 'generic') : (t.tag || 'No country tag'), desc: t.file.replace('common/national_focus/', ''), kw: t.file, treeKey: t.key })),
+			items: () => ws.trees.map((t) => ({ label: (ws.isDirty(t.key) ? '● ' : '') + t.id, key: t.id + ' ' + (t.tag || ''), sub: `${t.count} ${t.kind === 'mio' ? 'traits' : 'focuses'}`, cat: t.kind === 'mio' ? 'MIO · ' + (t.tag || 'generic') : (t.tag || 'No country tag'), desc: t.file.replace('common/national_focus/', ''), kw: t.file, treeKey: t.key, pic: t.kind === 'mio' ? mioIcon(t) : undefined })),
 			onPick: (it) => { ws.switchTo(it.treeKey); }
 		});
 		const step = (d) => { const n = ws.trees[idx + d]; if (n) ws.switchTo(n.key); };
@@ -239,6 +239,13 @@
 	function lineEl(l, onClick) {
 		return h('div', { class: 'chg ' + SIGN_CLASS[l.sign] + (onClick ? ' click' : ''), onclick: onClick }, h('span', { class: 'chg-s' }, SIGN_GLYPH[l.sign] || '•'), h('span', {}, l.text));
 	}
+	/** The company logo of an organization tree (its own icon, or the one of the template it includes). */
+	function mioIcon(t) {
+		const own = (t.entries || []).find((e) => e.k === 'icon' && typeof e.v === 'string');
+		if (own) return own.v;
+		const o = FB.mios && FB.mios.byId(t.id);
+		return (o && FB.mios.iconOf(o)) || undefined;
+	}
 	function renderChanges() {
 		const pane = $('pane-changes');
 		if (!pane) return;
@@ -249,10 +256,10 @@
 		pane.appendChild(h('div', { class: 'pane-intro' }, ws.active ? 'Everything you changed since the mod was opened or last saved. Saving writes it to the mod and logs this version.' : 'Everything you changed since this project was opened or its last logged version.'));
 		if (!groups.length) pane.appendChild(h('div', { class: 'empty-hint' }, 'No changes yet. Edit a focus and it shows up here.'));
 		groups.forEach((g) => {
-			const cur = !ws.active || g.key === ws.current;
+			const cur = !ws.active || g.spirits || g.key === ws.current;
 			pane.appendChild(h('div', { class: 'chg-group' },
 				h('div', { class: 'chg-title' }, h('b', {}, g.tree), g.tag ? h('em', {}, g.tag) : null, cur ? null : h('button', { class: 'link small', onclick: () => ws.switchTo(g.key) }, 'open')),
-				g.lines.map((l) => lineEl(l, l.focus && cur ? () => { const f = FB.state.project.focuses.find((x) => x.name === l.focus); if (f) { FB.select(f.uid); FB.canvas.centerOn(f.uid); } } : null))));
+				g.lines.map((l) => lineEl(l, l.spirit ? () => FB.spirits.openEditor(l.spirit) : l.focus && cur ? () => { const f = FB.state.project.focuses.find((x) => x.name === l.focus); if (f) { FB.select(f.uid); FB.canvas.centerOn(f.uid); } } : null))));
 		});
 		pane.appendChild(h('div', { class: 'btn-row' },
 			h('button', { class: 'btn primary small', disabled: !total, onclick: openSaveVersion }, ws.active ? 'Save to mod…' : 'Log this version…'),
@@ -314,7 +321,7 @@
 			h('div', { class: 'chg-preview' }, groups.map((g) => h('div', {}, h('div', { class: 'chg-title' }, h('b', {}, g.tree)), g.lines.slice(0, 12).map((l) => lineEl(l)), g.lines.length > 12 ? h('div', { class: 'muted small' }, `…and ${g.lines.length - 12} more`) : null))),
 			h('label', { class: 'fld' }, h('span', { class: 'fld-l' }, 'Version name'), label),
 			h('label', { class: 'fld' }, h('span', { class: 'fld-l' }, 'Notes'), notes),
-			ws.active ? h('p', { class: 'muted small' }, 'Only the edited focus_tree blocks and changed names/descriptions are written. Everything else in your files stays untouched, and the originals are backed up first.') : null,
+			ws.active ? h('p', { class: 'muted small' }, 'Only the edited focus_tree blocks, the picture/modifiers of edited national spirits and changed names/descriptions are written. Everything else in your files stays untouched, and the originals are backed up first.') : null,
 			h('div', { class: 'btn-row' }, go)));
 	}
 	FB.ui.openSaveVersion = openSaveVersion;

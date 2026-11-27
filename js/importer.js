@@ -337,15 +337,33 @@
 	FB.MIO_BONUS = MIO_BONUS;
 	const bareTokens = (b) => (b && isBlock(b) && b.v.every((x) => x.v === undefined) ? b.v.map((x) => x.k) : null);
 
+	/** The nations an organization is for: every original_tag / tag in its `allowed` block (also inside OR),
+	 * else the tag its id starts with (GER_…). Empty = generic, any nation can get it. */
+	function mioTags(org) {
+		const out = [];
+		const walk = (en) => (en || []).forEach((x) => {
+			if ((x.k === 'original_tag' || x.k === 'tag') && isTag(sval(x)) && !out.includes(x.v)) out.push(x.v);
+			else if (isBlock(x) && x.k !== 'NOT') walk(x.v);
+		});
+		const al = find(org.v, 'allowed');
+		if (al && isBlock(al)) walk(al.v);
+		if (!out.length) { const m = /^([A-Z][A-Z0-9]{2})_/.exec(org.k); if (m) out.push(m[1]); }
+		return out;
+	}
+	FB.importer.mioTags = mioTags;
+
 	FB.importer.parseMioFile = function (src, fileName) {
 		const trees = [];
-		const isOrg = (e) => isBlock(e) && e.k && e.v.some((x) => ['trait', 'initial_trait', 'include', 'equipment_type', 'research_categories'].includes(x.k));
+		const isOrg = (e) => isBlock(e) && e.k && e.v.some((x) => ['trait', 'add_trait', 'override_trait', 'initial_trait', 'include', 'equipment_type', 'research_categories'].includes(x.k));
 		const add = (e) => {
-			const traits = e.v.filter((x) => x.k === 'trait' || x.k === 'initial_trait').length;
-			const m = /^([A-Z]{3})_/.exec(e.k);
-			trees.push({ kind: 'mio', id: e.k, entries: e.v, file: fileName, onlyTree: false, shared: false, span: [e.s, e.e], index: trees.length, count: traits, tag: m ? m[1] : '' });
+			const traits = e.v.filter((x) => x.k === 'trait' || x.k === 'add_trait' || x.k === 'initial_trait').length;
+			const tags = mioTags(e);
+			trees.push({ kind: 'mio', id: e.k, entries: e.v, file: fileName, onlyTree: false, shared: false, span: [e.s, e.e], index: trees.length, count: traits, tag: tags.join(' '), tags });
 		};
 		parse(src).forEach((top) => { if (isOrg(top)) add(top); else if (isBlock(top) && top.k) top.v.filter(isOrg).forEach(add); });
+		const vars = {};   // @name = value constants at the top of the file, used in trait positions
+		src.replace(/^[ \t]*@([\w.]+)[ \t]*=[ \t]*(-?[\d.]+)/gm, (m, k, v) => { vars[k] = v; return m; });
+		trees.forEach((t) => { t.vars = vars; });
 		return trees;
 	};
 
@@ -358,7 +376,9 @@
 		const m = pr.meta;
 		m.treeId = tree.id; m.tag = tree.tag; m.modName = ''; m.importedFrom = tree.file;
 		const en = tree.entries;
-		const isTrait = (e) => (e.k === 'trait' || e.k === 'initial_trait') && isBlock(e);
+		const isTrait = (e) => (e.k === 'trait' || e.k === 'add_trait' || e.k === 'initial_trait') && isBlock(e);
+		const vars = tree.vars || {};
+		const num = (v) => numv(typeof v === 'string' && v[0] === '@' && vars[v.slice(1)] != null ? vars[v.slice(1)] : v);
 		m.mioHeader = text(en.filter((e) => !isTrait(e)));
 		const byToken = new Map(), rel = new Map(), parents = new Map();
 		let initN = 0;
@@ -368,12 +388,13 @@
 			if (!token) { stats.warnings.push('A trait without a token was skipped.'); return; }
 			if (byToken.has(token)) { stats.warnings.push(`Duplicate trait token "${token}" skipped.`); return; }
 			const f = FB.newFocus({ id: token, idLocked: true, initial });
+			if (te.k === 'add_trait') f.traitKey = 'add_trait';   // added to an included template: written back as add_trait
 			f.nameKey = sval(find(t, 'name')) || token;
 			f.name = loc[f.nameKey] != null ? loc[f.nameKey] : f.nameKey;
 			f.desc = loc[f.nameKey + '_desc'] || '';
 			f.icon = sval(find(t, 'icon')) || '';
 			const pos = find(t, 'position');
-			const px = pos && isBlock(pos) ? numv(sval(find(pos.v, 'x'))) : null, py = pos && isBlock(pos) ? numv(sval(find(pos.v, 'y'))) : null;
+			const px = pos && isBlock(pos) ? num(sval(find(pos.v, 'x'))) : null, py = pos && isBlock(pos) ? num(sval(find(pos.v, 'y'))) : null;
 			f.x = px == null ? 0 : px; f.y = py == null ? 0 : py;
 			if (initial) { f.x = -2; f.y = initN - 1; }
 			const r = sval(find(t, 'relative_position_id')); if (r) rel.set(token, r);
@@ -435,7 +456,7 @@
 		tree.entries.forEach((e) => {
 			if (!isBlock(e)) return;
 			if (kind === 'mio') {
-				if (e.k !== 'trait' && e.k !== 'initial_trait') return;
+				if (e.k !== 'trait' && e.k !== 'add_trait' && e.k !== 'initial_trait') return;
 				const id = sval(find(e.v, 'token')) || (e.k === 'initial_trait' ? `${tree.id}_initial_${++initN}` : null);
 				if (id) out.push({ id, e });
 			} else if (e.k === 'focus') {

@@ -148,7 +148,7 @@
 	/* ---------- view ---------- */
 	function card(e, installed) {
 		const c = e.counts || {};
-		const bits = [[c.focus, 'focuses'], [c.tanks, 'tanks'], [c.ships, 'ships'], [c.templates, 'templates'], [c.images, 'pictures']].filter((x) => x[0]).map((x) => x[0] + ' ' + x[1]);
+		const bits = [[c.focus, 'focuses'], [c.tanks, 'tanks'], [c.ships, 'ships'], [c.templates, 'templates'], [c.mio, 'MIOs'], [c.images, 'pictures']].filter((x) => x[0]).map((x) => x[0] + ' ' + x[1]);
 		const btn = h('button', { class: 'dzf-btn gold', disabled: !!installed, onclick: (ev) => install(e, ev.currentTarget) }, installed ? 'In my guides' : 'Add to my guides');
 		return h('article', { class: 'mk-card' },
 			h('div', { class: 'mk-top' }, e.tag ? h('span', { class: 'gd-nattag' }, e.tag) : null, h('span', { class: 'mk-nation' }, e.tag ? host.nationName(e.tag) : 'Any nation')),

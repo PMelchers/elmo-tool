@@ -109,7 +109,7 @@
 			if (rows.length) inner.push(...block(k, rows.map((r) => `${String(r.k).trim()} = ${fmtNum(r.v)}`)));
 		});
 		if ((f.extra || '').trim()) inner.push(...String(f.extra).split('\n'));
-		return block(f.initial ? 'initial_trait' : 'trait', inner);
+		return block(f.initial ? 'initial_trait' : f.traitKey === 'add_trait' ? 'add_trait' : 'trait', inner);
 	}
 	FB.gen.mioBlock = function (pr) {
 		const m = pr.meta, L = [];

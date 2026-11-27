@@ -1,18 +1,18 @@
 /* Focus Builder - Guides: a written guide for one nation with five tabs
- * (focus order, tank designs, ship designs, division templates, explanation text).
+ * (focus order, tank designs, ship designs, division templates, MIO trait order, explanation text).
  * Designs and templates are copied into the guide as snapshots, so a guide still reads fine without the game data. */
 (function (FB) {
 	'use strict';
 	const h = FB.h;
 	const LS_KEY = 'focusbuilder.guides.v1';
-	const TABS = [['focus', 'Focus order', 'tree'], ['tank', 'Tank design', 'tank'], ['ship', 'Ship design', 'anchor'], ['templates', 'Templates', 'users'], ['text', 'Explanation', 'scroll'], ['images', 'Images', 'image']];
+	const TABS = [['focus', 'Focus order', 'tree'], ['tank', 'Tank design', 'tank'], ['ship', 'Ship design', 'anchor'], ['templates', 'Templates', 'users'], ['mio', 'MIO', 'factory'], ['text', 'Explanation', 'scroll'], ['images', 'Images', 'image']];
 	const G = { list: [], cur: null, tab: 'focus', treeKey: '', status: '', view: 'mine' };
 	let root, body, overlaySel = null, overlayId = '';
 
 	/* ---------- storage ---------- */
-	const load = () => { try { G.list = JSON.parse(localStorage.getItem(LS_KEY) || '[]'); } catch (e) { G.list = []; } G.list.forEach((g) => { if (!Array.isArray(g.images)) g.images = []; }); };
+	const load = () => { try { G.list = JSON.parse(localStorage.getItem(LS_KEY) || '[]'); } catch (e) { G.list = []; } G.list.forEach((g) => { if (!Array.isArray(g.images)) g.images = []; if (!Array.isArray(g.mio)) g.mio = []; }); };
 	const persist = () => { try { localStorage.setItem(LS_KEY, JSON.stringify(G.list)); } catch (e) { /* storage unavailable */ } };
-	const newGuide = (title) => ({ id: FB.uid(), title: title || 'New guide', tag: '', summary: '', focus: [], tanks: [], ships: [], templates: [], text: [], images: [], created: new Date().toISOString(), updated: new Date().toISOString() });
+	const newGuide = (title) => ({ id: FB.uid(), title: title || 'New guide', tag: '', summary: '', focus: [], tanks: [], ships: [], templates: [], mio: [], text: [], images: [], created: new Date().toISOString(), updated: new Date().toISOString() });
 	const cur = () => G.list.find((g) => g.id === G.cur) || null;
 	const save = (g) => { g.updated = new Date().toISOString(); persist(); if (g.id === overlayId) applyOverlay(); };
 
@@ -174,6 +174,7 @@
 		g.focus.forEach((s) => { if (s.type === 'focus') out.push(stepIcon(s)); });
 		g.tanks.concat(g.ships).forEach((d) => (d.modules || []).forEach((m) => out.push(m.icon)));
 		g.templates.forEach((t) => (t.rows || []).flat().concat(t.support || []).forEach((c) => c && out.push(c.icon)));
+		(g.mio || []).forEach((p) => { out.push(p.icon); p.steps.forEach((s) => out.push(s.icon)); });
 		return out.filter(Boolean);
 	}
 
@@ -230,7 +231,7 @@
 		nationName: (tag) => natLabel(tag),
 		async importGuide(x) {
 			const g = Object.assign(newGuide(x.title), x, { id: FB.uid() });
-			['focus', 'tanks', 'ships', 'templates', 'text', 'images'].forEach((k) => { if (!Array.isArray(g[k])) g[k] = []; });
+			['focus', 'tanks', 'ships', 'templates', 'mio', 'text', 'images'].forEach((k) => { if (!Array.isArray(g[k])) g[k] = []; });
 			await storeImported(g);
 			G.list.push(g); persist();
 			return g;
@@ -261,7 +262,7 @@
 					for (const x of (Array.isArray(a) ? a : [a])) {
 						if (!x || typeof x !== 'object' || !Array.isArray(x.focus)) { bad++; continue; }
 						const g = Object.assign(newGuide(x.title), x, { id: FB.uid() });
-						['tanks', 'ships', 'templates', 'text', 'images'].forEach((k) => { if (!Array.isArray(g[k])) g[k] = []; });
+						['tanks', 'ships', 'templates', 'mio', 'text', 'images'].forEach((k) => { if (!Array.isArray(g[k])) g[k] = []; });
 						await storeImported(g);
 						add.push(g);
 					}
@@ -340,7 +341,7 @@
 		col.appendChild(h('button', { class: 'dzf-btn gold', onclick: () => pickNation('', (tag) => { const g = newGuide(tag ? natLabel(tag) + ' guide' : 'Guide ' + (G.list.length + 1)); g.tag = tag; G.list.push(g); G.cur = g.id; G.tab = 'focus'; G.treeKey = ''; persist(); render(); }, true) }, FB.icon('plus', 15), 'New guide'));
 		if (!G.list.length) col.appendChild(h('div', { class: 'tp-empty' }, 'No guides yet. A guide collects a focus order, your tank and ship designs, division templates and your own text for one nation.'));
 		G.list.forEach((g) => col.appendChild(h('button', { class: 'tp-item' + (g.id === G.cur ? ' on' : ''), onclick: () => { G.cur = g.id; render(); } },
-			h('b', {}, g.title || '(untitled)'), h('small', {}, (g.tag ? g.tag + ' · ' : '') + g.focus.filter((s) => s.type === 'focus').length + ' focuses · ' + g.tanks.length + ' tanks · ' + g.ships.length + ' ships · ' + g.templates.length + ' templates'))));
+			h('b', {}, g.title || '(untitled)'), h('small', {}, (g.tag ? g.tag + ' · ' : '') + g.focus.filter((s) => s.type === 'focus').length + ' focuses · ' + g.tanks.length + ' tanks · ' + g.ships.length + ' ships · ' + g.templates.length + ' templates' + ((g.mio || []).length ? ' · ' + g.mio.length + ' MIO' : '')))));
 		return col;
 	}
 
@@ -357,10 +358,10 @@
 			h('button', { class: 'dzf-btn', onclick: () => { const c = JSON.parse(JSON.stringify(g)); c.id = FB.uid(); c.title += ' (copy)'; G.list.push(c); G.cur = c.id; persist(); render(); } }, FB.icon('copy', 14), 'Duplicate'),
 			h('button', { class: 'dzf-btn', onclick: () => { if (confirm('Delete the guide "' + g.title + '"?')) { G.list = G.list.filter((x) => x.id !== g.id); dropImages(g, g.images || []); G.cur = null; persist(); render(); } } }, FB.icon('trash', 14), 'Delete')));
 		sec.appendChild(h('label', { class: 'fld' }, h('span', { class: 'fld-l' }, 'Short summary'), h('input', { type: 'text', value: g.summary, placeholder: 'One line that tells the reader what this guide is about', oninput: (e) => { g.summary = e.target.value; save(g); } })));
-		const counts = { focus: g.focus.filter((s) => s.type === 'focus').length, tank: g.tanks.length, ship: g.ships.length, templates: g.templates.length, text: g.text.length, images: g.images.length };
+		const counts = { focus: g.focus.filter((s) => s.type === 'focus').length, tank: g.tanks.length, ship: g.ships.length, templates: g.templates.length, mio: (g.mio || []).length, text: g.text.length, images: g.images.length };
 		sec.appendChild(h('div', { class: 'gd-tabs' }, TABS.map(([k, label, icon]) => h('button', { class: G.tab === k ? 'on' : '', onclick: () => { G.tab = k; render(); } }, FB.icon(icon, 15), label, h('span', { class: 'dzf-count' }, counts[k])))));
 		const pane = h('div', { class: 'gd-pane' });
-		({ focus: focusTab, tank: (p, x) => designTab(p, x, 'tank'), ship: (p, x) => designTab(p, x, 'ship'), templates: templatesTab, text: textTab, images: imagesTab })[G.tab](pane, g);
+		({ focus: focusTab, tank: (p, x) => designTab(p, x, 'tank'), ship: (p, x) => designTab(p, x, 'ship'), templates: templatesTab, mio: mioTab, text: textTab, images: imagesTab })[G.tab](pane, g);
 		sec.appendChild(pane);
 		return sec;
 	}
@@ -456,6 +457,55 @@
 				designView(s),
 				noteBox(s, g, 'When and why to use this design…')));
 		});
+	}
+
+	/* ---------- tab: MIO (which traits to click, in which order, and why) ---------- */
+	const mioStep = (t) => { if (FB.gfx && t.icon) FB.gfx.keep(t.icon); return { token: t.token, name: t.name, icon: t.icon || '', bonus: FB.mios.bonusText(t), note: '' }; };
+	const mioPlan = (o) => { const icon = FB.mios.iconOf(o); if (FB.gfx && icon) FB.gfx.keep(icon); return { id: o.id, name: o.name, tag: o.tags.join(' '), icon, steps: [], note: '' }; };
+	function mioTab(pane, g) {
+		const M = FB.mios;
+		const orgs = M ? (g.tag ? M.forNation(g.tag) : M.list.filter((o) => !o.archetype)) : [];
+		const inGuide = new Set(g.mio.map((p) => p.id));
+		pane.appendChild(h('div', { class: 'gd-bar' }, FB.icon('factory', 15), h('b', {}, 'Add an organization'),
+			h('button', { class: 'dzf-btn', onclick: () => FB.modes.set('mios') }, FB.icon('factory', 14), 'Open MIOs')));
+		pane.appendChild(h('div', { class: 'gd-mio-orgs' }, orgs.length ? orgs.filter((o) => !inGuide.has(o.id)).slice(0, 80).map((o) => h('button', { class: 'gd-mio-org', title: o.id + (o.src === 'mod' ? ' (your mod)' : ''), onclick: () => { g.mio.push(mioPlan(o)); save(g); render(); } },
+			M.logo(M.iconOf(o), 30), h('span', {}, o.name), h('small', {}, o.tags.length ? o.tags.join(', ') : 'generic')))
+			: h('span', { class: 'muted small' }, M && M.loading ? 'Reading organizations…' : 'No organizations found.')));
+		pane.appendChild(h('p', { class: 'muted small' }, (g.tag ? 'Organizations ' + natLabel(g.tag) + ' can get (its own first, then the generic ones). ' : 'Choose the nation of this guide to see only its organizations. ') +
+			'Click the traits in the order to take them (click again to take one out), then write why.' + (M && !M.list.length && !M.loading ? ' Open your mod in the Trees tab (and start with the helper for the base game) to load organizations.' : '')));
+		if (M && !M.ready && !M.loading) M.load(false).then(() => { if (G.tab === 'mio') render(); });
+		if (!g.mio.length) pane.appendChild(h('div', { class: 'tp-empty' }, 'No organizations in this guide yet.'));
+		g.mio.forEach((p, i) => {
+			const org = M ? M.byId(p.id) : null;
+			if (org && !p.icon) p.icon = M.iconOf(org);
+			const traits = org ? M.traitsOf(org).filter((t) => !t.initial).sort((a, b) => a.y - b.y || a.x - b.x) : [];
+			const order = new Map(p.steps.map((s, j) => [s.token, j + 1]));
+			const toggle = (t) => { const at = p.steps.findIndex((s) => s.token === t.token); if (at >= 0) p.steps.splice(at, 1); else p.steps.push(mioStep(t)); save(g); render(); };
+			const tree = org ? M.treeView(org, { order, onClick: toggle }) : h('div', { class: 'tp-empty' }, 'This organization is not loaded (open the mod it comes from). The steps still show.');
+			const list = h('div', { class: 'gd-order' }, h('div', { class: 'dzf-phd' }, 'Click order'));
+			if (!p.steps.length) list.appendChild(h('div', { class: 'tp-empty' }, 'Click traits in the tree above in the order a player should take them.'));
+			p.steps.forEach((s, j) => list.appendChild(h('div', { class: 'gd-step' }, h('span', { class: 'gd-num' }, j + 1), h('span', { class: 'gd-stepic mio-node small' }, FB.gfx && s.icon ? FB.gfx.picture(s.icon, 'mio-node-img') : null),
+				h('div', { class: 'gd-stepb' },
+					h('div', { class: 'gd-steph' }, h('input', { type: 'text', value: s.name, oninput: (e) => { s.name = e.target.value; save(g); } }), s.bonus ? h('span', { class: 'gd-weeks' }, s.bonus) : null, rowTools(p.steps, j, g)),
+					noteBox(s, g, 'Why click this one now?')))));
+			pane.appendChild(h('div', { class: 'gd-card gd-mio-plan' },
+				h('div', { class: 'gd-cardh gd-mio-head' }, M ? M.logo(p.icon, 40) : null, h('input', { type: 'text', value: p.name, oninput: (e) => { p.name = e.target.value; save(g); } }), h('small', {}, [p.id, p.tag || 'generic', org ? org.src : ''].filter(Boolean).join(' · ')),
+					h('button', { class: 'ibtn', title: 'Add every trait in tree order', disabled: !traits.length, onclick: () => { traits.forEach((t) => { if (!order.has(t.token)) p.steps.push(mioStep(t)); }); save(g); render(); } }, FB.icon('sparkles', 14)),
+					rowTools(g.mio, i, g)),
+				noteBox(p, g, 'Why this organization? (optional)'),
+				tree, list));
+		});
+	}
+	/** From the MIOs tab: put an organization in a guide (gid '' = a new guide for its nation) and show it. */
+	function addMio(gid, o) {
+		let g = G.list.find((x) => x.id === gid);
+		if (!g) { g = newGuide((o.tags[0] ? natLabel(o.tags[0]) : o.name) + ' guide'); g.tag = o.tags[0] || ''; G.list.push(g); }
+		if (!Array.isArray(g.mio)) g.mio = [];
+		g.mio.push(mioPlan(o));
+		G.cur = g.id; G.tab = 'mio'; G.view = 'mine';
+		save(g);
+		FB.modes.set('guides');
+		render();
 	}
 
 	/* ---------- tab: templates ---------- */
@@ -665,6 +715,10 @@
 			L.push('## Division templates', '');
 			g.templates.forEach((s) => { L.push('### ' + s.name, '', '```', tplLines(s), '```', '', s.summary); if (s.note) L.push('', s.note); L.push(''); });
 		}
+		if ((g.mio || []).length) {
+			L.push('## Military industrial organizations', '');
+			g.mio.forEach((p) => { L.push('### ' + p.name, ''); if (p.note) L.push(p.note, ''); p.steps.forEach((s, i) => L.push((i + 1) + '. **' + s.name + '**' + (s.bonus ? ' (' + s.bonus + ')' : '') + (s.note ? ' - ' + s.note.replace(/\n+/g, ' ') : ''))); L.push(''); });
+		}
 		if (g.images.length) { L.push('## Images', ''); g.images.forEach((im) => L.push('- **' + (im.title || 'Picture') + '**' + (im.caption ? ' - ' + im.caption : ''))); L.push('', '*The pictures are in the web page export.*', ''); }
 		return L.filter((x, i, a) => !(x === '' && a[i - 1] === '')).join('\n');
 	}
@@ -686,6 +740,10 @@
 			L.push('', '[h2]Division templates[/h2]');
 			g.templates.forEach((s) => { L.push('[h3]' + s.name + '[/h3]', '[code]' + tplLines(s) + '[/code]', s.summary); if (s.note) L.push(s.note); });
 		}
+		if ((g.mio || []).length) {
+			L.push('', '[h2]Military industrial organizations[/h2]');
+			g.mio.forEach((p) => { L.push('[h3]' + p.name + '[/h3]'); if (p.note) L.push(p.note); L.push('[olist]'); p.steps.forEach((s) => L.push('[*][b]' + s.name + '[/b]' + (s.bonus ? ' (' + s.bonus + ')' : '') + (s.note ? ' - ' + s.note.replace(/\n+/g, ' ') : ''))); L.push('[/olist]'); });
+		}
 		if (g.images.length) { L.push('', '[h2]Images[/h2]', '[list]'); g.images.forEach((im) => L.push('[*][b]' + (im.title || 'Picture') + '[/b]' + (im.caption ? ' - ' + im.caption : ''))); L.push('[/list]'); }
 		return L.join('\n');
 	}
@@ -703,6 +761,7 @@
 			(s.dials && Object.keys(s.dials).length ? '<p class="clk">' + Object.entries(s.dials).filter((x) => typeof x[1] === 'number').map(([k, v]) => esc(k) + ' <b>' + v + '</b> clicks').join(' · ') + (s.cost ? ' · cost <b>' + s.cost + ' IC</b>' : '') + '</p>' : '') +
 			(s.stats && s.stats.length ? '<div class="st">' + s.stats.map((x) => '<div><span>' + esc(x.label) + '</span><b>' + esc(x.value) + '</b></div>').join('') + '</div>' : '') +
 			(s.note ? '<p>' + esc(s.note) + '</p>' : '') + '</div>';
+		const mio = (p) => '<div class="card"><h3>' + pic(p.icon, 'fi') + esc(p.name) + '</h3>' + (p.note ? '<p>' + esc(p.note) + '</p>' : '') + p.steps.map((s, i) => '<div class="step"><span class="n">' + (i + 1) + '</span>' + pic(s.icon, 'fi') + '<div><b>' + esc(s.name) + '</b>' + (s.bonus ? ' <small>' + esc(s.bonus) + '</small>' : '') + (s.note ? '<p>' + esc(s.note) + '</p>' : '') + '</div></div>').join('') + '</div>';
 		const tpl = (s) => '<div class="card"><h3>' + esc(s.name) + '</h3><div class="tg">' + s.rows.map((r) => '<div>' + r.map(cell).join('') + '</div>').join('') + '<div class="sup">Support ' + s.support.map(cell).join('') + '</div></div><small>' + esc(s.summary) + '</small>' + (s.note ? '<p>' + esc(s.note) + '</p>' : '') + '</div>';
 		/* in the text a picture shows only its caption; the leftover pictures at the end also show their title */
 		const figure = (im, inText) => '<figure>' + (data[im.id] ? '<img src="' + data[im.id] + '" alt="' + esc(im.title) + '">' : '') +
@@ -714,7 +773,8 @@
 			g.text.map((t) => '<h2>' + esc(t.title) + '</h2>' + mdToHtml(t.body, (k) => (g.images[k - 1] ? figure(g.images[k - 1], true) : ''))).join('\n') +
 			(rest.length ? '<h2>Images</h2>' + rest.map((im) => figure(im, false)).join('') : '') +
 			(g.focus.length ? '<h2>Focus order</h2>' + focus : '') + (g.tanks.length ? '<h2>Tank designs</h2>' + g.tanks.map(design).join('') : '') + (g.ships.length ? '<h2>Ship designs</h2>' + g.ships.map(design).join('') : '') +
-			(g.templates.length ? '<h2>Division templates</h2>' + g.templates.map(tpl).join('') : '') + '</main></body></html>';
+			(g.templates.length ? '<h2>Division templates</h2>' + g.templates.map(tpl).join('') : '') +
+			((g.mio || []).length ? '<h2>Military industrial organizations</h2>' + g.mio.map(mio).join('') : '') + '</main></body></html>';
 	}
 
 	function exportMenu(anchor, g) {
@@ -743,6 +803,7 @@
 			refreshOverlay();
 		},
 		list: () => G.list.slice(),
+		addMio,
 		toMarkdown, toBBCode, toHtml
 	};
 })(window.FB = window.FB || {});
