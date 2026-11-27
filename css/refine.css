@@ -372,3 +372,10 @@ body.normal .icon-prev { cursor: default; }
 .gd-pickcount b { color: var(--accent); font-size: 15px; }
 body.gd-picking .node { cursor: copy; }
 body.gd-picking .node:hover { border-color: var(--accent); }
+/* pictures a text section shows with [picture N] lines */
+.gd-picstrip { display: flex; flex-wrap: wrap; gap: 8px; }
+.gd-picstrip:empty { display: none; }
+.gd-picstrip figure { position: relative; margin: 0; }
+.gd-picstrip img { display: block; height: 64px; max-width: 160px; object-fit: cover; border-radius: 6px; border: 1px solid var(--line); background: var(--panel2); }
+.gd-picstrip figure span { position: absolute; top: 3px; left: 3px; min-width: 18px; padding: 0 4px; border-radius: 9px; background: rgba(0,0,0,.7); color: #fff; font-size: 11px; text-align: center; }
+.gd-picmiss { display: inline-flex; align-items: center; gap: 4px; font-size: 12px; color: #d98c6a; }

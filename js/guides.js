@@ -541,14 +541,30 @@
 	}
 
 	/* ---------- tab: explanation text ---------- */
+	/** Small copies of the pictures a section shows with [picture N] lines, so the writer sees what goes where. */
+	function picStrip(g, body) {
+		const strip = h('div', { class: 'gd-picstrip' });
+		picNums(body).forEach((n) => {
+			const im = g.images[n - 1];
+			if (!im) { strip.appendChild(h('span', { class: 'gd-picmiss' }, FB.icon('alert', 13), 'No picture ' + n)); return; }
+			const pic = h('img', { alt: im.title || '', title: n + '. ' + (im.title || '') });
+			imgUrl(im.id).then((u) => { if (u) pic.src = u; });
+			strip.appendChild(h('figure', {}, pic, h('span', {}, n)));
+		});
+		return strip;
+	}
 	function textTab(pane, g) {
 		pane.appendChild(h('div', { class: 'gd-bar' }, FB.icon('scroll', 15),
 			h('button', { class: 'dzf-btn gold', onclick: () => { g.text.push({ title: 'Section ' + (g.text.length + 1), body: '' }); save(g); render(); } }, FB.icon('plus', 14), 'Add section'),
-			h('span', { class: 'muted small' }, 'Formatting: # Heading, ## Subheading, - list item, **bold**, blank line = new paragraph.')));
+			h('span', { class: 'muted small' }, 'Formatting: # Heading, ## Subheading, - list item, **bold**, blank line = new paragraph. A line [picture 3] shows picture 3 of the Images tab there.')));
 		if (!g.text.length) pane.appendChild(h('div', { class: 'tp-empty' }, 'No text yet. Add a section such as “Overview”, “Strategy” or “Tips”.'));
-		g.text.forEach((s, i) => pane.appendChild(h('div', { class: 'gd-card' },
-			h('div', { class: 'gd-cardh' }, h('input', { type: 'text', value: s.title, placeholder: 'Section title', oninput: (e) => { s.title = e.target.value; save(g); } }), rowTools(g.text, i, g)),
-			h('textarea', { rows: 8, class: 'gd-body', value: s.body, placeholder: 'Write the explanation here…', oninput: (e) => { s.body = e.target.value; save(g); } }))));
+		g.text.forEach((s, i) => {
+			let strip = picStrip(g, s.body);
+			pane.appendChild(h('div', { class: 'gd-card' },
+				h('div', { class: 'gd-cardh' }, h('input', { type: 'text', value: s.title, placeholder: 'Section title', oninput: (e) => { s.title = e.target.value; save(g); } }), rowTools(g.text, i, g)),
+				h('textarea', { rows: 8, class: 'gd-body', value: s.body, placeholder: 'Write the explanation here…', oninput: (e) => { s.body = e.target.value; save(g); const n = picStrip(g, s.body); strip.replaceWith(n); strip = n; } }),
+				strip));
+		});
 	}
 
 	/* ---------- tab: images ---------- */
@@ -591,11 +607,20 @@
 
 	/* ---------- export ---------- */
 	const bold = (s) => esc(s).replace(/\*\*(.+?)\*\*/g, '<b>$1</b>');
-	function mdToHtml(src) {
+	/* A line "[picture 3]" in the explanation text shows picture 3 of the Images tab at that spot. */
+	const PIC_LINE = /^\s*\[picture\s+(\d+)\]\s*$/i;
+	const picNums = (src) => String(src || '').split(/\r?\n/).map((l) => PIC_LINE.exec(l)).filter(Boolean).map((m) => +m[1]);
+	/** Picture numbers (1-based) that the text already shows in place. */
+	const placedPics = (g) => new Set(g.text.flatMap((t) => picNums(t.body)));
+	/** For Markdown and BBCode, where the pictures cannot go: the line names the picture instead. */
+	const picLabel = (g, src, wrap) => String(src || '').replace(/^\s*\[picture\s+(\d+)\]\s*$/gim, (x, n) => { const im = g.images[n - 1]; return wrap('(picture ' + n + (im && im.title ? ': ' + im.title : '') + ')'); });
+	/** pic(n) gives the HTML for picture n (used by the web page export). */
+	function mdToHtml(src, pic) {
 		const out = []; let list = false;
 		const close = () => { if (list) { out.push('</ul>'); list = false; } };
 		String(src || '').split(/\r?\n/).forEach((l) => {
 			let m;
+			if (pic && (m = PIC_LINE.exec(l))) { close(); out.push(pic(+m[1])); return; }
 			if ((m = /^\s*[-*]\s+(.*)$/.exec(l))) { if (!list) { out.push('<ul>'); list = true; } out.push('<li>' + bold(m[1]) + '</li>'); return; }
 			close();
 			if ((m = /^##\s+(.*)$/.exec(l))) out.push('<h4>' + bold(m[1]) + '</h4>');
@@ -625,7 +650,7 @@
 	function toMarkdown(g) {
 		const L = [];
 		L.push('# ' + g.title, g.tag ? '*' + natLabel(g.tag) + ' (' + g.tag + ')*' : '', g.summary ? '\n' + g.summary : '', '');
-		g.text.filter((t) => t.body || t.title).forEach((t) => L.push('## ' + t.title, '', t.body, ''));
+		g.text.filter((t) => t.body || t.title).forEach((t) => L.push('## ' + t.title, '', picLabel(g, t.body, (x) => '*' + x + '*'), ''));
 		if (g.focus.length) {
 			L.push('## Focus order', ''); let n = 0;
 			g.focus.forEach((s) => { if (s.type === 'heading') L.push('', '### ' + s.name, ''); else L.push(++n + '. **' + s.name + '** (' + s.weeks + ' weeks)' + (s.note ? ' - ' + s.note.replace(/\n+/g, ' ') : '')); });
@@ -647,7 +672,7 @@
 	function toBBCode(g) {
 		const L = ['[h1]' + g.title + '[/h1]'];
 		if (g.summary) L.push('[i]' + g.summary + '[/i]');
-		g.text.filter((t) => t.body || t.title).forEach((t) => L.push('', '[h2]' + t.title + '[/h2]', mdToBB(t.body)));
+		g.text.filter((t) => t.body || t.title).forEach((t) => L.push('', '[h2]' + t.title + '[/h2]', mdToBB(picLabel(g, t.body, (x) => '[i]' + x + '[/i]'))));
 		if (g.focus.length) {
 			L.push('', '[h2]Focus order[/h2]'); let n = 0;
 			g.focus.forEach((s) => { if (s.type === 'heading') L.push('[h3]' + s.name + '[/h3]'); else L.push(++n + '. [b]' + s.name + '[/b] (' + s.weeks + ' weeks)' + (s.note ? ' - ' + s.note.replace(/\n+/g, ' ') : '')); });
@@ -679,11 +704,15 @@
 			(s.stats && s.stats.length ? '<div class="st">' + s.stats.map((x) => '<div><span>' + esc(x.label) + '</span><b>' + esc(x.value) + '</b></div>').join('') + '</div>' : '') +
 			(s.note ? '<p>' + esc(s.note) + '</p>' : '') + '</div>';
 		const tpl = (s) => '<div class="card"><h3>' + esc(s.name) + '</h3><div class="tg">' + s.rows.map((r) => '<div>' + r.map(cell).join('') + '</div>').join('') + '<div class="sup">Support ' + s.support.map(cell).join('') + '</div></div><small>' + esc(s.summary) + '</small>' + (s.note ? '<p>' + esc(s.note) + '</p>' : '') + '</div>';
+		/* in the text a picture shows only its caption; the leftover pictures at the end also show their title */
+		const figure = (im, inText) => '<figure>' + (data[im.id] ? '<img src="' + data[im.id] + '" alt="' + esc(im.title) + '">' : '') +
+			(inText ? (im.caption ? '<figcaption>' + esc(im.caption) + '</figcaption>' : '') : '<figcaption><b>' + esc(im.title || '') + '</b>' + (im.caption ? ' · ' + esc(im.caption) : '') + '</figcaption>') + '</figure>';
+		const placed = placedPics(g), rest = g.images.filter((im, i) => !placed.has(i + 1));   // pictures not shown in the text go at the end
 		const css = 'body{background:#14181c;color:#dde5ec;font:16px/1.55 Segoe UI,Arial,sans-serif;margin:0}main{max-width:900px;margin:0 auto;padding:30px 20px}h1{font:600 32px Georgia,serif;color:#eadfc2;margin:0}h2{font:600 22px Georgia,serif;color:#d8c27a;border-bottom:1px solid #3a444e;padding-bottom:4px;margin-top:34px}h3{color:#eadfc2;margin:.8em 0 .3em}.lead{color:#98a5b1}.card{background:#1d2329;border:1px solid #3a444e;border-radius:6px;padding:12px 16px;margin:12px 0}.step{display:flex;gap:12px;margin:8px 0}.n{flex:none;width:28px;height:28px;border-radius:50%;background:#d8c27a;color:#1a1608;font-weight:700;display:flex;align-items:center;justify-content:center}.step p,.card p{margin:.3em 0;color:#b5c0ca}small{color:#8d99a5}.dz{display:flex;gap:18px;align-items:flex-start;flex-wrap:wrap}.svg{width:260px;max-width:100%;background:linear-gradient(#1d4d7a,#163d62);border-radius:6px;padding:6px}.svg svg{width:100%;height:auto}table{border-collapse:collapse}td{padding:2px 12px 2px 0;border-bottom:1px solid #2c353d}td:first-child{color:#98a5b1}.tg div{display:flex;gap:4px;margin:4px 0}.c{width:44px;height:30px;border:1px solid #3a444e;border-radius:3px;display:inline-flex;align-items:center;justify-content:center;font-size:11px;color:#6d7a86}.c.on{background:color-mix(in srgb,var(--gc) 35%,#1d2329);border-color:var(--gc);color:#fff}.sup{margin-top:10px;align-items:center;color:#98a5b1}ul{padding-left:22px}.mods{display:grid;grid-template-columns:repeat(auto-fill,minmax(110px,1fr));gap:8px;flex:1;min-width:260px}.mod{background:#14181c;border:1px solid #2c353d;border-radius:6px;padding:6px;text-align:center;display:flex;flex-direction:column;gap:2px}.mod.empty{opacity:.45}.mp{height:46px;display:flex;align-items:center;justify-content:center}.mp img{max-width:100%;max-height:46px}.mp span{color:#d8c27a;font-weight:700}.mod b{font-size:12.5px;font-weight:600}.mod small{font-size:11px}.clk{color:#b5c0ca}.st{display:grid;grid-template-columns:repeat(auto-fill,minmax(170px,1fr));gap:2px 16px;margin-top:8px;font-size:13.5px}.st div{display:flex;justify-content:space-between;border-bottom:1px solid #2c353d;padding:2px 0}.st span{color:#98a5b1}.c.img{width:84px;height:36px;background:#14181c}.c img{max-width:92%;max-height:30px}.fi{width:44px;height:40px;object-fit:contain;flex:none}figure{margin:18px 0}figure img{display:block;max-width:100%;height:auto;border-radius:6px;border:1px solid #3a444e}figcaption{margin-top:6px;color:#98a5b1;font-size:14px}figcaption b{color:#dde5ec}';
 		return '<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>' + esc(g.title) + '</title><style>' + css + '</style></head><body><main><h1>' + esc(g.title) + '</h1>' +
 			(g.tag ? '<div class="lead">' + esc(natLabel(g.tag)) + ' (' + esc(g.tag) + ')</div>' : '') + (g.summary ? '<p class="lead">' + esc(g.summary) + '</p>' : '') +
-			g.text.map((t) => '<h2>' + esc(t.title) + '</h2>' + mdToHtml(t.body)).join('\n') +
-			(g.images.length ? '<h2>Images</h2>' + g.images.map((im) => '<figure>' + (data[im.id] ? '<img src="' + data[im.id] + '" alt="' + esc(im.title) + '">' : '') + '<figcaption><b>' + esc(im.title || '') + '</b>' + (im.caption ? ' · ' + esc(im.caption) : '') + '</figcaption></figure>').join('') : '') +
+			g.text.map((t) => '<h2>' + esc(t.title) + '</h2>' + mdToHtml(t.body, (k) => (g.images[k - 1] ? figure(g.images[k - 1], true) : ''))).join('\n') +
+			(rest.length ? '<h2>Images</h2>' + rest.map((im) => figure(im, false)).join('') : '') +
 			(g.focus.length ? '<h2>Focus order</h2>' + focus : '') + (g.tanks.length ? '<h2>Tank designs</h2>' + g.tanks.map(design).join('') : '') + (g.ships.length ? '<h2>Ship designs</h2>' + g.ships.map(design).join('') : '') +
 			(g.templates.length ? '<h2>Division templates</h2>' + g.templates.map(tpl).join('') : '') + '</main></body></html>';
 	}

@@ -19,7 +19,7 @@ import tarfile
 HERE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 TARGET = os.environ.get('ELMO_PUBLISH_DIR') or os.path.join(os.path.expanduser('~'), 'Documents', 'GitHub', 'elmo-tool')
 KEEP = {'.git', '.gitattributes'}          # files of the public repository itself
-SKIP = ('marketplace-repo/',)               # lives in its own repository (elmo-guides)
+SKIP = ('marketplace-repo/', 'CLAUDE.md/')               # lives in its own repository (elmo-guides)
 
 
 def git(cwd, *args, capture=True):
